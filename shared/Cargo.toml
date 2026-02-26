@@ -1,0 +1,18 @@
+[package]
+name = "shared"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+sqlx.workspace = true
+axum.workspace = true
+http.workspace = true
+jsonwebtoken.workspace = true
+validator.workspace = true
+bcrypt.workspace = true
