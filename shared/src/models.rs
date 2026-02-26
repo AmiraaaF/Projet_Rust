@@ -18,7 +18,7 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPublic {
     pub id: Uuid,
     pub email: String,
@@ -39,20 +39,20 @@ impl From<User> for UserPublic {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub email: String,
     pub name: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub access_token: String,
     pub token_type: String,
@@ -73,13 +73,13 @@ pub struct Project {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateProjectRequest {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateProjectRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -97,7 +97,7 @@ pub struct ProjectMember {
     pub joined_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AddMemberRequest {
     pub user_id: Uuid,
     pub role: String,
@@ -119,7 +119,7 @@ pub struct Task {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTaskRequest {
     pub title: String,
     pub description: Option<String>,
@@ -127,7 +127,7 @@ pub struct CreateTaskRequest {
     pub deadline: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateTaskRequest {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -159,7 +159,7 @@ impl PaginationParams {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
     pub data: Vec<T>,
     pub page: i64,
