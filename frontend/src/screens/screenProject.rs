@@ -1,94 +1,311 @@
-use eframe::egui;
+use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke};
 use crate::state::{AppState, Screen};
-use shared::models::*;
 
 pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
-    egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            if ui.button("← Back").clicked() {
-                state.current_screen = Screen::Dashboard;
-            }
-            ui.heading("📁 Projects");
-        });
-    });
+    let bg = state.theme.background;
+    let sidebar_bg = state.theme.sidebar;
+    let fg = state.theme.foreground;
+    let muted = state.theme.muted_foreground;
+    let border = state.theme.border;
+    let card = state.theme.card;
+    let primary = state.theme.primary;
+    let primary_fg = state.theme.primary_foreground;
+    let destructive = state.theme.destructive;
+    let chart_2 = state.theme.chart_2;
+    let destructive_fg = state.theme.destructive_foreground;
 
-    egui::CentralPanel::default().show(ctx, |ui| {
-        ui.label("Project Name:");
-        ui.text_edit_singleline(&mut state.project_name_input);
-
-        ui.label("Description:");
-        ui.text_edit_multiline(&mut state.project_description_input);
-
-        if ui.button("✅ Create Project").clicked() {
-            if !state.project_name_input.is_empty() {
-                state.success_message = Some("Project created successfully!".to_string());
-                state.project_name_input.clear();
-                state.project_description_input.clear();
-            } else {
-                state.error_message = Some("Please enter a project name".to_string());
-            }
-        }
-
-        ui.separator();
-        ui.label("Your Projects:");
-
-        for project in &state.projects {
+    egui::TopBottomPanel::top("top_panel")
+        .show_separator_line(false)
+        .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::symmetric(16.0, 10.0)))
+        .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("📁 {}", project.name));
-                if ui.button("View").clicked() {
-                    state.current_project = Some(project.clone());
-                    state.current_screen = Screen::ProjectDetail;
-                }
+                ui.label(RichText::new("📁 Projets").color(fg).size(18.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let logout_btn = egui::Button::new(
+                        RichText::new("🔓 Déconnexion").color(destructive_fg).size(13.0)
+                    ).fill(destructive);
+                    if ui.add(logout_btn).clicked() {
+                        state.logout();
+                    }
+                    if let Some(user) = &state.current_user.clone() {
+                        ui.label(RichText::new(format!("👤 {}", user.name)).color(muted).size(13.0));
+                    }
+                });
             });
-        }
+        });
 
-        if state.projects.is_empty() {
-            ui.colored_label(egui::Color32::GRAY, "No projects yet.");
-        }
-    });
+    egui::SidePanel::left("sidebar")
+        .show_separator_line(false)
+        .min_width(180.0)
+        .max_width(180.0)
+        .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::same(12.0)))
+        .show(ctx, |ui| {
+            ui.add_space(8.0);
+            ui.label(RichText::new("NAVIGATION").color(muted).size(11.0));
+            ui.add_space(8.0);
+
+            if sidebar_item(ui, "📊 Dashboard", false, fg, primary) {
+                state.go_to(Screen::Dashboard);
+            }
+            ui.add_space(4.0);
+            sidebar_item(ui, "📁 Projets", true, fg, primary);
+        });
+
+    egui::CentralPanel::default()
+        .frame(Frame::none().fill(bg).inner_margin(Margin::same(24.0)))
+        .show(ctx, |ui| {
+            ui.label(RichText::new("Nouveau projet").color(fg).size(16.0).strong());
+            ui.add_space(12.0);
+
+            Frame::none()
+                .fill(card)
+                .stroke(Stroke::new(1.0, border))
+                .inner_margin(Margin::same(16.0))
+                .rounding(Rounding::same(8.0))
+                .show(ui, |ui| {
+                    ui.label(RichText::new("Nom du projet").color(fg).size(13.0));
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.project_name_input)
+                            .hint_text("Ex: Site web client X")
+                            .desired_width(280.0)
+                    );
+                    ui.add_space(10.0);
+
+                    ui.label(RichText::new("Description").color(fg).size(13.0));
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::TextEdit::multiline(&mut state.project_description_input)
+                            .hint_text("Description du projet...")
+                            .desired_width(280.0)
+                            .desired_rows(3)
+                    );
+                    ui.add_space(12.0);
+
+                    let create_clicked = ui.add(
+                        egui::Button::new(
+                            RichText::new("✅ Créer le projet").color(primary_fg).size(13.0)
+                        )
+                        .fill(primary)
+                        .min_size(egui::vec2(160.0, 32.0))
+                    ).clicked();
+
+                    if let Some(error) = &state.error_message.clone() {
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(format!(" {}", error)).color(destructive).size(12.0));
+                    }
+                    if let Some(success) = &state.success_message.clone() {
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(format!(" {}", success)).color(chart_2).size(12.0));
+                    }
+
+                    if create_clicked {
+                        if !state.project_name_input.is_empty() {
+                            state.error_message = None;
+                            state.success_message = Some("Projet créé avec succès !".to_string());
+                            state.project_name_input.clear();
+                            state.project_description_input.clear();
+                        } else {
+                            state.success_message = None;
+                            state.error_message = Some("Veuillez entrer un nom de projet".to_string());
+                        }
+                    }
+                });
+
+            ui.add_space(24.0);
+
+            ui.label(RichText::new("Vos projets").color(fg).size(16.0).strong());
+            ui.add_space(12.0);
+
+            if state.projects.is_empty() {
+                ui.label(RichText::new("Aucun projet pour l'instant.").color(muted).size(13.0));
+            } else {
+                let projects_clone = state.projects.clone();
+                for project in &projects_clone {
+                    Frame::none()
+                        .fill(card)
+                        .stroke(Stroke::new(1.0, border))
+                        .inner_margin(Margin::symmetric(16.0, 12.0))
+                        .rounding(Rounding::same(8.0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(format!("📁 {}", project.name)).color(fg).size(14.0));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let btn = egui::Button::new(
+                                        RichText::new("Ouvrir").color(primary_fg).size(12.0)
+                                    ).fill(primary);
+                                    if ui.add(btn).clicked() {
+                                        state.current_project = Some(project.clone());
+                                        state.go_to(Screen::ProjectDetail);
+                                    }
+                                });
+                            });
+                        });
+                    ui.add_space(6.0);
+                }
+            }
+        });
 }
 
 pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
-    egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            if ui.button("← Back").clicked() {
-                state.current_screen = Screen::Projects;
-                state.current_project = None;
-                state.current_tasks.clear();
-            }
+    let bg = state.theme.background;
+    let sidebar_bg = state.theme.sidebar;
+    let fg = state.theme.foreground;
+    let muted = state.theme.muted_foreground;
+    let border = state.theme.border;
+    let card = state.theme.card;
+    let primary = state.theme.primary;
+    let primary_fg = state.theme.primary_foreground;
+    let destructive = state.theme.destructive;
+    let destructive_fg = state.theme.destructive_foreground;
+    let chart_2 = state.theme.chart_2;
 
-            if let Some(project) = &state.current_project {
-                ui.heading(format!("📁 {}", project.name));
+    egui::TopBottomPanel::top("top_panel")
+        .show_separator_line(false)
+        .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::symmetric(16.0, 10.0)))
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if let Some(project) = &state.current_project.clone() {
+                    ui.label(RichText::new(format!("📁 {}", project.name)).color(fg).size(18.0).strong());
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(user) = &state.current_user.clone() {
+                        ui.label(RichText::new(format!("👤 {}", user.name)).color(muted).size(13.0));
+                    }
+                    let logout_btn = egui::Button::new(
+                        RichText::new("🔓 Déconnexion").color(destructive_fg).size(13.0)
+                    ).fill(destructive);
+                    if ui.add(logout_btn).clicked() {
+                        state.logout();
+                    }
+                });
+            });
+        });
+
+    egui::SidePanel::left("sidebar")
+        .show_separator_line(false)
+        .min_width(180.0)
+        .max_width(180.0)
+        .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::same(12.0)))
+        .show(ctx, |ui| {
+            ui.add_space(8.0);
+            ui.label(RichText::new("NAVIGATION").color(muted).size(11.0));
+            ui.add_space(8.0);
+
+            if sidebar_item(ui, "📊 Dashboard", false, fg, primary) {
+                state.go_to(Screen::Dashboard);
+            }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "📁 Projets", true, fg, primary) {
+                state.current_project = None;
+                state.go_to(Screen::Projects);
             }
         });
-    });
 
-    egui::CentralPanel::default().show(ctx, |ui| {
-        if let Some(project) = &state.current_project {
-            ui.label(format!(
-                "Description: {}",
-                project.description.as_deref().unwrap_or("No description")
-            ));
-            ui.label(format!("Status: {}", project.status));
-            ui.separator();
+    egui::CentralPanel::default()
+        .frame(Frame::none().fill(bg).inner_margin(Margin::same(24.0)))
+        .show(ctx, |ui| {
+            if let Some(project) = &state.current_project.clone() {
+                Frame::none()
+                    .fill(card)
+                    .stroke(Stroke::new(1.0, border))
+                    .inner_margin(Margin::same(16.0))
+                    .rounding(Rounding::same(8.0))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Description").color(muted).size(12.0));
+                        ui.label(RichText::new(
+                            project.description.as_deref().unwrap_or("Aucune description")
+                        ).color(fg).size(14.0));
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Statut :").color(muted).size(12.0));
+                            ui.label(RichText::new(&project.status).color(chart_2).size(12.0));
+                        });
+                    });
 
-            ui.label("Task Title:");
-            ui.text_edit_singleline(&mut state.task_title_input);
+                ui.add_space(20.0);
 
-            if ui.button("➕ Add Task").clicked() {
-                if !state.task_title_input.is_empty() {
-                    state.success_message = Some("Task created!".to_string());
-                    state.task_title_input.clear();
+                ui.label(RichText::new("Ajouter une tâche").color(fg).size(16.0).strong());
+                ui.add_space(12.0);
+
+                Frame::none()
+                    .fill(card)
+                    .stroke(Stroke::new(1.0, border))
+                    .inner_margin(Margin::same(16.0))
+                    .rounding(Rounding::same(8.0))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Titre de la tâche").color(fg).size(13.0));
+                        ui.add_space(4.0);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut state.task_title_input)
+                                .hint_text("Ex: Faire la homepage")
+                                .desired_width(280.0)
+                        );
+                        ui.add_space(10.0);
+
+                        let add_clicked = ui.add(
+                            egui::Button::new(
+                                RichText::new("➕ Ajouter").color(primary_fg).size(13.0)
+                            )
+                            .fill(primary)
+                            .min_size(egui::vec2(120.0, 32.0))
+                        ).clicked();
+
+                        if let Some(error) = &state.error_message.clone() {
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(format!("⚠ {}", error)).color(destructive).size(12.0));
+                        }
+                        if let Some(success) = &state.success_message.clone() {
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(format!("✓ {}", success)).color(chart_2).size(12.0));
+                        }
+
+                        if add_clicked {
+                            if !state.task_title_input.is_empty() {
+                                state.error_message = None;
+                                state.success_message = Some("Tâche créée !".to_string());
+                                state.task_title_input.clear();
+                            } else {
+                                state.success_message = None;
+                                state.error_message = Some("Entrez un titre de tâche".to_string());
+                            }
+                        }
+                    });
+
+                ui.add_space(20.0);
+
+                ui.label(RichText::new("Tâches").color(fg).size(16.0).strong());
+                ui.add_space(12.0);
+
+                if state.current_tasks.is_empty() {
+                    ui.label(RichText::new("Aucune tâche pour ce projet.").color(muted).size(13.0));
                 } else {
-                    state.error_message = Some("Enter a task title".to_string());
+                    for task in &state.current_tasks.clone() {
+                        Frame::none()
+                            .fill(card)
+                            .stroke(Stroke::new(1.0, border))
+                            .inner_margin(Margin::symmetric(16.0, 10.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("✓").color(chart_2));
+                                    ui.label(RichText::new(&task.title).color(fg).size(13.0));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.label(RichText::new(&task.status).color(muted).size(11.0));
+                                    });
+                                });
+                            });
+                        ui.add_space(4.0);
+                    }
                 }
             }
+        });
+}
 
-            ui.separator();
-
-            for task in &state.current_tasks {
-                ui.label(format!("✓ {} [{}]", task.title, task.status));
-            }
-        }
-    });
+fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: egui::Color32, primary: egui::Color32) -> bool {
+    let color = if active { primary } else { fg };
+    let btn = egui::Button::new(RichText::new(label).color(color).size(14.0))
+        .fill(egui::Color32::TRANSPARENT)
+        .min_size(egui::vec2(156.0, 32.0));
+    ui.add(btn).clicked()
 }

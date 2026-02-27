@@ -1,1 +1,78 @@
-//COULEURS DE L'APPLICATION 
+// COULEURS DE L'APPLICATION 
+use egui::Color32;
+
+/// Palette de couleurs Dark
+pub struct DarkTheme {
+    pub background: Color32,
+    pub foreground: Color32,
+    pub card: Color32,
+    pub card_foreground: Color32,
+    pub popover: Color32,
+    pub popover_foreground: Color32,
+    pub primary: Color32,
+    pub primary_foreground: Color32,
+    pub secondary: Color32,
+    pub secondary_foreground: Color32,
+    pub muted: Color32,
+    pub muted_foreground: Color32,
+    pub accent: Color32,
+    pub accent_foreground: Color32,
+    pub destructive: Color32,
+    pub destructive_foreground: Color32,
+    pub border: Color32,
+    pub input: Color32,
+    pub ring: Color32,
+    pub chart_1: Color32,
+    pub chart_2: Color32,
+    pub chart_3: Color32,
+    pub chart_4: Color32,
+    pub chart_5: Color32,
+    pub sidebar: Color32,
+    pub sidebar_foreground: Color32,
+    pub sidebar_primary: Color32,
+    pub sidebar_primary_foreground: Color32,
+    pub sidebar_accent: Color32,
+    pub sidebar_accent_foreground: Color32,
+    pub sidebar_border: Color32,
+    pub sidebar_ring: Color32,
+}
+
+impl DarkTheme {
+    pub fn new() -> Self {
+        Self {
+            background: Color32::from_rgb(37, 37, 37),           
+            foreground: Color32::from_rgb(251, 251, 252),        
+            card: Color32::from_rgb(37, 37, 37),                 
+            card_foreground: Color32::from_rgb(251, 251, 252),   
+            popover: Color32::from_rgb(37, 37, 37),              
+            popover_foreground: Color32::from_rgb(251, 251, 252),
+            primary: Color32::from_rgb(251, 251, 252),           
+            primary_foreground: Color32::from_rgb(52, 52, 52),   
+            secondary: Color32::from_rgb(68, 68, 68),            
+            secondary_foreground: Color32::from_rgb(251, 251, 252), 
+            muted: Color32::from_rgb(68, 68, 68),             
+            muted_foreground: Color32::from_rgb(180, 180, 180),  
+            accent: Color32::from_rgb(68, 68, 68),              
+            accent_foreground: Color32::from_rgb(251, 251, 252), 
+            destructive: Color32::from_rgb(139, 51, 60),         
+            destructive_foreground: Color32::from_rgb(193, 98, 78), 
+            border: Color32::from_rgb(68, 68, 68),            
+            input: Color32::from_rgb(68, 68, 68),            
+            ring: Color32::from_rgb(112, 112, 112),           
+            chart_1: Color32::from_rgb(124, 58, 202),            
+            chart_2: Color32::from_rgb(132, 204, 22),          
+            chart_3: Color32::from_rgb(245, 158, 11),            
+            chart_4: Color32::from_rgb(192, 132, 250),           
+            chart_5: Color32::from_rgb(239, 68, 68),             
+            sidebar: Color32::from_rgb(52, 52, 52),              
+            sidebar_foreground: Color32::from_rgb(251, 251, 252),
+            sidebar_primary: Color32::from_rgb(124, 58, 202),    
+            sidebar_primary_foreground: Color32::from_rgb(251, 251, 252), 
+            sidebar_accent: Color32::from_rgb(68, 68, 68),     
+            sidebar_accent_foreground: Color32::from_rgb(251, 251, 252), 
+            sidebar_border: Color32::from_rgb(68, 68, 68),    
+            sidebar_ring: Color32::from_rgb(112, 112, 112),     
+        }
+    }
+}
+

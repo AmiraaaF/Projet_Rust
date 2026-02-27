@@ -1,10 +1,12 @@
 mod api;
 mod screens;
 mod state;
+mod themes;
 
 use eframe::egui;
 use screens::{screenAuth, screenDashboard, screenProject};
 use state::{AppState, Screen};
+use themes::DarkTheme;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions::default();
@@ -12,19 +14,21 @@ fn main() -> Result<(), eframe::Error> {
         "Mini-SaaS Dashboard",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_visuals(egui::Visuals {
-                dark_mode: true,
-                panel_fill: egui::Color32::from_rgb(20, 20, 35),
-                window_fill: egui::Color32::from_rgb(30, 30, 50),
-                extreme_bg_color: egui::Color32::from_rgb(10, 10, 20),
-                override_text_color: Some(egui::Color32::from_rgb(220, 220, 255)),
-                selection: egui::style::Selection {
-                    bg_fill: egui::Color32::from_rgb(80, 60, 200),
-                    stroke: egui::Stroke::new(1.0, egui::Color32::WHITE),
-                },
-                ..egui::Visuals::dark()
-            });
-            Box::<MyApp>::default()
+            let theme = DarkTheme::new();
+            let mut visuals = egui::Visuals::dark();
+            visuals.panel_fill = theme.card;
+            visuals.window_fill = theme.background;
+            visuals.extreme_bg_color = theme.background;
+            visuals.faint_bg_color = theme.card;
+            visuals.override_text_color = Some(theme.foreground);
+            visuals.selection.bg_fill = theme.primary;
+            visuals.selection.stroke = egui::Stroke::new(1.0, theme.primary_foreground);
+            visuals.hyperlink_color = theme.primary;
+            visuals.error_fg_color = theme.destructive;
+            visuals.warn_fg_color = theme.accent;
+            visuals.code_bg_color = theme.muted;
+            cc.egui_ctx.set_visuals(visuals);
+            Ok(Box::<MyApp>::default())
         }),
     )
 }
