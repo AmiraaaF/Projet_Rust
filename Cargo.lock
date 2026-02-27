@@ -4375,6 +4375,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "taks-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "dotenv",
+ "dotenvy",
+ "http 1.4.0",
+ "hyper 1.8.1",
+ "serde",
+ "serde_json",
+ "shared",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower 0.4.13",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "validator",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

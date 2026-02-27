@@ -6,7 +6,7 @@ members = [
     "services/billing-service",
     "services/notification-service",
     "api-gateway",
-    "frontend",
+    "frontend", "services/taks-service",
 ]
 resolver = "2"
 
