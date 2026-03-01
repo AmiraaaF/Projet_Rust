@@ -1,6 +1,6 @@
 use shared::models::{Project, Task, UserPublic};
 use crate::themes::DarkTheme;
-use crate::screens::screenBilling::{Plan, Invoice};
+use crate::screens::screenBilling::{Plan, BillingInvoice, InvoiceStatus};
 use crate::api::ApiClient;
 
 #[derive(Clone, Debug)]
@@ -13,54 +13,50 @@ pub enum Screen {
     Billing,
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+//  BILLING STATE
+// ─────────────────────────────────────────────────────────────────────────────
 
 pub struct BillingState {
     pub current_plan: Plan,
     pub pending_plan: Option<Plan>,
     pub show_upgrade_confirm: bool,
     pub show_cancel_confirm: bool,
-    pub selected_invoice: Option<Invoice>,
+    pub selected_invoice: Option<BillingInvoice>,
     pub download_message: Option<String>,
-    pub plan_changed: bool, // Flag for API sync
+    pub invoices: Vec<BillingInvoice>,   
+    pub invoices_loaded: bool,           
+    pub last_error: Option<String>,      
 }
 
 impl Default for BillingState {
     fn default() -> Self {
         Self {
-            current_plan: Plan::Free,          
+            current_plan: Plan::Free,
             pending_plan: None,
             show_upgrade_confirm: false,
             show_cancel_confirm: false,
             selected_invoice: None,
             download_message: None,
-            plan_changed: false,
+            invoices: Vec::new(),
+            invoices_loaded: false,
+            last_error: None,
         }
     }
 }
 
 impl BillingState {
-    /// Create BillingState from DB plan name
-    pub fn from_db(plan_name: &str) -> Self {
-        let current_plan = match plan_name {
-            "pro" => crate::screens::screenBilling::Plan::Pro,
-            "enterprise" => crate::screens::screenBilling::Plan::Enterprise,
-            _ => crate::screens::screenBilling::Plan::Free,
-        };
-
+    pub fn from_plan_name(plan_name: &str) -> Self {
         Self {
-            current_plan,
-            pending_plan: None,
-            show_upgrade_confirm: false,
-            show_cancel_confirm: false,
-            selected_invoice: None,
-            download_message: None,
-            plan_changed: false,
+            current_plan: Plan::from_str(plan_name),
+            ..Default::default()
         }
     }
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+//  APP STATE
+// ─────────────────────────────────────────────────────────────────────────────
 
 pub struct AppState {
     pub current_screen: Screen,
@@ -80,9 +76,9 @@ pub struct AppState {
     pub api_url: String,
     pub theme: DarkTheme,
     pub billing_state: BillingState,
-    pub api_client: crate::api::ApiClient,    pub is_loading: bool, // Track async operations
-    pub pending_login: bool,
-    pub pending_register: bool,}
+    pub api_client: ApiClient,
+    pub is_loading: bool,
+}
 
 impl Default for AppState {
     fn default() -> Self {
@@ -113,8 +109,6 @@ impl AppState {
             billing_state: BillingState::default(),
             api_client: ApiClient::new(api_url),
             is_loading: false,
-            pending_login: false,
-            pending_register: false,
         }
     }
 
@@ -146,32 +140,169 @@ impl AppState {
         self.current_screen = Screen::Login;
     }
 
-    /// Load subscription for current user from API
+    // ─── BILLING METHODS ───────────────────────────────────────────────────────
+
+    
     pub fn load_subscription_for_user_sync(&mut self, user_id: &str) {
-        if let Some(token) = &self.token {
-            match self.api_client.get_subscription_sync(user_id, token) {
-                Ok(response) => {
-                    if let Some(plan_name) = response.get("plan").and_then(|v| v.as_str()) {
-                        self.billing_state = BillingState::from_db(plan_name);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Failed to load subscription: {}", e);
-                    self.billing_state = BillingState::default();
-                }
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        match self.api_client.get_subscription_sync(user_id, &token) {
+            Ok(response) => {
+                let plan_name = response
+                    .get("plan")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("free");
+                self.billing_state = BillingState::from_plan_name(plan_name);
+                eprintln!("✅ Subscription loaded: plan={}", plan_name);
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load subscription: {}", e);
+                self.billing_state = BillingState::default();
             }
         }
     }
 
-    /// Attempt login - returns (success, error_message)
-    pub fn attempt_login(&mut self, email: &str, password: &str) -> (bool, String) {
-        // This would need to be async but we're in sync context
-        // For now, return an error directing to setup the server
-        (false, "⚠️ Serveur de connexion non disponible. Assurez-vous que les services backend tournent sur http://localhost:3001".to_string())
+    pub fn update_plan_sync(&mut self, new_plan: &Plan) -> Result<String, String> {
+        let user_id = match &self.current_user {
+            Some(u) => u.id.to_string(),
+            None => return Err("Non connecté".to_string()),
+        };
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Token manquant".to_string()),
+        };
+
+        let plan_name = new_plan.api_name();
+
+        match self.api_client.update_subscription_sync(&user_id, plan_name, &token) {
+            Ok(response) => {
+                let confirmed_plan = response
+                    .get("plan")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(plan_name);
+                self.billing_state.current_plan = Plan::from_str(confirmed_plan);
+                self.billing_state.invoices_loaded = false; 
+                eprintln!("✅ Plan updated to: {}", confirmed_plan);
+                Ok(confirmed_plan.to_string())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to update plan: {}", e);
+                Err(e)
+            }
+        }
     }
 
-    /// Attempt register - returns (success, error_message)
-    pub fn attempt_register(&mut self, email: &str, name: &str, password: &str) -> (bool, String) {
-        (false, "⚠️ Serveur d'enregistrement non disponible. Assurez-vous que les services backend tournent sur http://localhost:3001".to_string())
+    
+    pub fn cancel_subscription_sync(&mut self) -> Result<(), String> {
+        let user_id = match &self.current_user {
+            Some(u) => u.id.to_string(),
+            None => return Err("Non connecté".to_string()),
+        };
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Token manquant".to_string()),
+        };
+
+        match self.api_client.cancel_subscription_sync(&user_id, &token) {
+            Ok(_) => {
+                self.load_subscription_for_user_sync(&user_id);
+                eprintln!("✅ Subscription cancelled");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to cancel: {}", e);
+                Err(e)
+            }
+        }
     }
+
+    
+    pub fn load_invoices_sync(&mut self) {
+        if self.billing_state.invoices_loaded {
+            return; 
+        }
+
+        let user_id = match &self.current_user {
+            Some(u) => u.id.to_string(),
+            None => return,
+        };
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        match self.api_client.get_invoices_sync(&user_id, &token) {
+            Ok(response) => {
+                let invoices = parse_invoices_from_response(&response);
+                self.billing_state.invoices = invoices;
+                self.billing_state.invoices_loaded = true;
+                eprintln!("✅ Loaded {} invoices", self.billing_state.invoices.len());
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load invoices: {}", e);
+                self.billing_state.invoices = Vec::new();
+                self.billing_state.invoices_loaded = true; 
+            }
+        }
+    }
+}
+
+
+fn parse_invoices_from_response(response: &serde_json::Value) -> Vec<BillingInvoice> {
+    let data = match response.get("data").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => return Vec::new(),
+    };
+
+    data.iter()
+        .filter_map(|item| {
+            let id = item.get("id")?.as_str()?.to_string();
+            let amount = item.get("amount")?.as_f64()?;
+            let currency = item
+                .get("currency")
+                .and_then(|v| v.as_str())
+                .unwrap_or("USD")
+                .to_string();
+            let status_str = item
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("issued");
+            let issued_at = item
+                .get("issued_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let status = match status_str {
+                "paid" => InvoiceStatus::Paid,
+                "overdue" => InvoiceStatus::Overdue,
+                _ => InvoiceStatus::Pending,
+            };
+
+            
+            let date = if issued_at.len() >= 10 {
+                issued_at[..10].to_string()
+            } else {
+                issued_at.clone()
+            };
+
+            let plan = item
+                .get("plan")
+                .and_then(|v| v.as_str())
+                .unwrap_or("—")
+                .to_string();
+
+            Some(BillingInvoice {
+                id: format!("INV-{}", &id[..8].to_uppercase()),
+                date,
+                plan,
+                amount,
+                currency,
+                status,
+            })
+        })
+        .collect()
 }

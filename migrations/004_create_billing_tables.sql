@@ -20,7 +20,7 @@ CREATE TABLE invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     subscription_id UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
-    amount DECIMAL(10, 2) NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
     currency VARCHAR(3) DEFAULT 'USD' NOT NULL,
     status invoice_status DEFAULT 'issued' NOT NULL,
     issued_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,

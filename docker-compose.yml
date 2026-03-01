@@ -14,7 +14,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d mini_saas"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,6 +50,7 @@ services:
         condition: service_healthy
     networks:
       - mini-saas-network
+    restart: on-failure
 
   # project-service:
   #   build:
@@ -82,6 +83,7 @@ services:
         condition: service_healthy
     networks:
       - mini-saas-network
+    restart: on-failure
 
   # notification-service:
   #   build:
