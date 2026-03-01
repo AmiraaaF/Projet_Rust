@@ -2,16 +2,17 @@ use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke};
 use crate::state::{AppState, Screen};
 
 pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
-    let bg = state.theme.background;
-    let sidebar_bg = state.theme.sidebar;
-    let fg = state.theme.foreground;
-    let muted = state.theme.muted_foreground;
-    let border = state.theme.border;
-    let card = state.theme.card;
-    let primary = state.theme.primary;
-    let primary_fg = state.theme.primary_foreground;
+    let bg          = state.theme.background;
+    let sidebar_bg  = state.theme.sidebar;
+    let fg          = state.theme.foreground;
+    let muted       = state.theme.muted_foreground;
+    let border      = state.theme.border;
+    let card        = state.theme.card;
+    let primary     = state.theme.primary;
+    let primary_fg  = state.theme.primary_foreground;
     let destructive = state.theme.destructive;
     let destructive_fg = state.theme.destructive_foreground;
+    let _chart_2     = state.theme.chart_2;
 
     egui::TopBottomPanel::top("top_panel")
         .show_separator_line(false)
@@ -21,12 +22,13 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                 ui.label(RichText::new("📊 Dashboard").color(fg).size(18.0).strong());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let logout_btn = egui::Button::new(
-                        RichText::new("🔓 Déconnexion").color(destructive_fg).size(13.0)
+                        RichText::new("🔓 Logout").color(destructive_fg).size(13.0)
                     ).fill(destructive);
                     if ui.add(logout_btn).clicked() {
                         state.logout();
                     }
                     if let Some(user) = &state.current_user.clone() {
+                        ui.add_space(8.0);
                         ui.label(RichText::new(format!("👤 {}", user.name)).color(muted).size(13.0));
                     }
                 });
@@ -45,30 +47,34 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
 
             sidebar_item(ui, "📊 Dashboard", true, fg, primary);
             ui.add_space(4.0);
-            if sidebar_item(ui, "📁 Projets", false, fg, primary) {
+            if sidebar_item(ui, "📁 Projects", false, fg, primary) {
                 state.go_to(Screen::Projects);
+            }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "💳 Billing", false, fg, primary) {
+                state.go_to(Screen::Billing);
             }
         });
 
     egui::CentralPanel::default()
         .frame(Frame::none().fill(bg).inner_margin(Margin::same(24.0)))
         .show(ctx, |ui| {
-            ui.label(RichText::new("Vue d'ensemble").color(fg).size(20.0).strong());
+            ui.label(RichText::new("Overview").color(fg).size(20.0).strong());
             ui.add_space(4.0);
-            ui.label(RichText::new("Bienvenue sur votre tableau de bord").color(muted).size(13.0));
+            ui.label(RichText::new("Welcome to your dashboard").color(muted).size(13.0));
             ui.add_space(20.0);
 
             ui.horizontal(|ui| {
-                stat_card(ui, "📁 Projets", &state.projects.len().to_string(), card, fg, muted, border);
+                stat_card(ui, "📁 Projects", &state.projects.len().to_string(), card, fg, muted, border);
                 ui.add_space(12.0);
-                stat_card(ui, "✅ Tâches", &state.current_tasks.len().to_string(), card, fg, muted, border);
+                stat_card(ui, "✅ Tasks", &state.current_tasks.len().to_string(), card, fg, muted, border);
                 ui.add_space(12.0);
-                stat_card(ui, "👥 Membres", "1", card, fg, muted, border);
+                stat_card(ui, "💳 Plan", state.billing_state.current_plan.name(), card, fg, muted, border);
             });
 
             ui.add_space(24.0);
 
-            ui.label(RichText::new("Projets récents").color(fg).size(16.0).strong());
+            ui.label(RichText::new("Recent Projects").color(fg).size(16.0).strong());
             ui.add_space(12.0);
 
             if state.projects.is_empty() {
@@ -79,10 +85,10 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                     .rounding(Rounding::same(8.0))
                     .show(ui, |ui| {
                         ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("Aucun projet pour l'instant").color(muted).size(13.0));
+                            ui.label(RichText::new("No projects yet").color(muted).size(13.0));
                             ui.add_space(8.0);
                             let btn = egui::Button::new(
-                                RichText::new("+ Créer un projet").color(primary_fg)
+                                RichText::new("+ Create a project").color(primary_fg)
                             ).fill(primary);
                             if ui.add(btn).clicked() {
                                 state.go_to(Screen::Projects);
@@ -102,7 +108,7 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                                 ui.label(RichText::new(format!("📁 {}", project.name)).color(fg));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     let btn = egui::Button::new(
-                                        RichText::new("Voir").color(primary_fg).size(12.0)
+                                        RichText::new("View").color(primary_fg).size(12.0)
                                     ).fill(primary);
                                     if ui.add(btn).clicked() {
                                         state.current_project = Some(project.clone());
@@ -135,7 +141,7 @@ fn stat_card(
             ui.set_min_width(120.0);
             ui.label(RichText::new(label).color(muted).size(12.0));
             ui.add_space(4.0);
-            ui.label(RichText::new(value).color(fg).size(28.0).strong());
+            ui.label(RichText::new(value).color(fg).size(24.0).strong());
         });
 }
 

@@ -12,11 +12,14 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - mini-saas-network
 
   redis:
     image: redis:7-alpine
@@ -28,10 +31,77 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - mini-saas-network
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    container_name: mini-saas-user-service
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+      JWT_EXPIRATION: "3600"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mini-saas-network
+
+  # project-service:
+  #   build:
+  #     context: .
+  #     dockerfile: services/project-service/Dockerfile
+  #   container_name: mini-saas-project-service
+  #   environment:
+  #     DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+  #     JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+  #   ports:
+  #     - "3002:3002"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - mini-saas-network
+
+  billing-service:
+    build:
+      context: .
+      dockerfile: services/billing-service/Dockerfile
+    container_name: mini-saas-billing-service
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mini-saas-network
+
+  # notification-service:
+  #   build:
+  #     context: .
+  #     dockerfile: services/notification-service/Dockerfile
+  #   container_name: mini-saas-notification-service
+  #   environment:
+  #     DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+  #     JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+  #   ports:
+  #     - "3004:3004"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - mini-saas-network
 
 volumes:
   postgres_data:
 
 networks:
-  default:
+  mini-saas-network:
     name: mini-saas-network

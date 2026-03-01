@@ -137,6 +137,100 @@ pub struct UpdateTaskRequest {
     pub deadline: Option<DateTime<Utc>>,
 }
 
+// ============= NOTIFICATION =============
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Notification {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub message: String,
+    pub notification_type: String,
+    pub status: String,
+    pub read_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateNotificationRequest {
+    pub user_id: Uuid,
+    pub title: String,
+    pub message: String,
+    pub notification_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateNotificationRequest {
+    pub status: Option<String>,
+    pub read_at: Option<DateTime<Utc>>,
+}
+
+// ============= SUBSCRIPTION =============
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Subscription {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub plan: String,
+    pub status: String,
+    pub started_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub auto_renew: bool,
+    pub max_projects: Option<i32>,
+    pub max_tasks: Option<i32>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSubscriptionRequest {
+    pub user_id: Uuid,
+    pub plan: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSubscriptionRequest {
+    pub plan: Option<String>,
+    pub status: Option<String>,
+    pub auto_renew: Option<bool>,
+}
+
+// ============= INVOICE =============
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Invoice {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub subscription_id: Option<Uuid>,
+    pub amount: f64,
+    pub currency: String,
+    pub status: String,
+    pub issued_at: DateTime<Utc>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub paid_at: Option<DateTime<Utc>>,
+    pub stripe_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateInvoiceRequest {
+    pub user_id: Uuid,
+    pub subscription_id: Option<Uuid>,
+    pub amount: f64,
+    pub currency: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateInvoiceRequest {
+    pub status: Option<String>,
+    pub paid_at: Option<DateTime<Utc>>,
+}
+
 // ============= PAGINATION =============
 
 #[derive(Debug, Serialize, Deserialize)]

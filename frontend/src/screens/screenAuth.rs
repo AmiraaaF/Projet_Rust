@@ -80,19 +80,26 @@ pub fn login_screen(ctx: &egui::Context, state: &mut AppState) {
                             ui.label(RichText::new(format!("✓ {}", success)).color(chart_2).size(12.0));
                         }
 
-                        // Actions après affichage
                         if login_clicked {
                             let email = state.email_input.clone();
                             let password = state.password_input.clone();
                             if !email.is_empty() && !password.is_empty() {
-                                state.current_user = Some(UserPublic {
-                                    id: uuid::Uuid::new_v4(),
-                                    email,
-                                    name: "User".to_string(),
-                                    role: "user".to_string(),
-                                    created_at: chrono::Utc::now(),
-                                });
-                                state.go_to(Screen::Dashboard); // vide les messages automatiquement
+                                match state.api_client.login_sync(&email, &password) {
+                                    Ok(auth_response) => {
+                                        state.current_user = Some(auth_response.user.clone());
+                                        state.token = Some(auth_response.access_token);
+                                        state.error_message = None;
+                                        state.success_message = Some("✅ Connexion réussie!".to_string());
+                                        // Load subscription plan for this user
+                                        state.load_subscription_for_user_sync(&auth_response.user.id.to_string());
+                                        state.go_to(Screen::Dashboard);
+                                    }
+                                    Err(_err) => {
+                                        state.error_message = Some("Identifiants invalides".to_string());
+                                        state.current_user = None;
+                                        state.token = None;
+                                    }
+                                }
                             } else {
                                 state.error_message = Some("Veuillez remplir tous les champs".to_string());
                             }
@@ -100,7 +107,7 @@ pub fn login_screen(ctx: &egui::Context, state: &mut AppState) {
 
                         if reg_clicked {
                             state.clear_forms();
-                            state.go_to(Screen::Register); // vide les messages automatiquement
+                            state.go_to(Screen::Register); 
                         }
                     });
             });
@@ -199,14 +206,22 @@ pub fn register_screen(ctx: &egui::Context, state: &mut AppState) {
                                 && !state.email_input.is_empty()
                                 && !state.password_input.is_empty()
                             {
-                                // On met le message AVANT go_to car go_to vide les messages
-                                // Donc on va sur Login et le message sera visible sur login
-                                state.clear_forms();
-                                // On met d'abord le message puis on change d'écran
-                                // go_to vide les messages donc on fait autrement ici :
-                                state.current_screen = Screen::Login;
-                                state.error_message = None;
-                                state.success_message = Some("Inscription réussie ! Connectez-vous.".to_string());
+                                let name = state.name_input.clone();
+                                let email = state.email_input.clone();
+                                let password = state.password_input.clone();
+                                
+                                match state.api_client.register_sync(&email, &name, &password) {
+                                    Ok(_auth_response) => {
+                                        state.clear_forms();
+                                        state.error_message = None;
+                                        state.success_message = Some("✅ Inscription réussie! Connectez-vous pour continuer.".to_string());
+                                        state.go_to(Screen::Login);
+                                    }
+                                    Err(_err) => {
+                                        state.error_message = Some("Erreur lors de l'inscription. Cet email existe peut-être déjà.".to_string());
+                                        state.success_message = None;
+                                    }
+                                }
                             } else {
                                 state.error_message = Some("Veuillez remplir tous les champs".to_string());
                                 state.success_message = None;

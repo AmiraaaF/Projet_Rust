@@ -4,7 +4,7 @@ mod state;
 mod themes;
 
 use eframe::egui;
-use screens::{screenAuth, screenDashboard, screenProject};
+use screens::{screenAuth, screenDashboard, screenProject, screenBilling};
 use state::{AppState, Screen};
 use themes::DarkTheme;
 
@@ -48,11 +48,12 @@ impl Default for MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         match self.state.current_screen {
-            Screen::Login => screenAuth::login_screen(ctx, &mut self.state),
-            Screen::Register => screenAuth::register_screen(ctx, &mut self.state),
-            Screen::Dashboard => screenDashboard::dashboard_screen(ctx, &mut self.state),
-            Screen::Projects => screenProject::projects_screen(ctx, &mut self.state),
+            Screen::Login        => screenAuth::login_screen(ctx, &mut self.state),
+            Screen::Register     => screenAuth::register_screen(ctx, &mut self.state),
+            Screen::Dashboard    => screenDashboard::dashboard_screen(ctx, &mut self.state),
+            Screen::Projects     => screenProject::projects_screen(ctx, &mut self.state),
             Screen::ProjectDetail => screenProject::project_detail_screen(ctx, &mut self.state),
+            Screen::Billing      => screenBilling::billing_screen(ctx, &mut self.state),
         }
     }
 }
