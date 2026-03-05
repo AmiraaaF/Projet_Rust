@@ -142,6 +142,20 @@ impl ApiClient {
             .map_err(|e| format!("Réponse invalide: {}", e))
     }
 
+    pub fn update_task_status_sync(&self, project_id: &str, task_id: &str, status: &str, token: &str) -> Result<Task, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/projects/{}/tasks/{}", self.base_url, project_id, task_id);
+        let body = serde_json::json!({ "status": status });
+        client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json()
+            .map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
     // ─── BILLING ───────────────────────────────────────────────────────────────
 
     pub fn get_subscription_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {

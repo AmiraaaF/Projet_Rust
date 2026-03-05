@@ -213,105 +213,127 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
         });
 
     egui::CentralPanel::default()
-        .frame(Frame::none().fill(bg).inner_margin(Margin::same(24.0)))
+        .frame(egui::Frame::none().fill(bg).inner_margin(egui::Margin::same(20.0)))
         .show(ctx, |ui| {
             if let Some(project) = &state.current_project.clone() {
-                Frame::none()
-                    .fill(card)
-                    .stroke(Stroke::new(1.0, border))
-                    .inner_margin(Margin::same(16.0))
-                    .rounding(Rounding::same(8.0))
-                    .show(ui, |ui| {
-                        ui.label(RichText::new("Description").color(muted).size(12.0));
-                        ui.label(RichText::new(
-                            project.description.as_deref().unwrap_or("No description")
-                        ).color(fg).size(14.0));
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Status:").color(muted).size(12.0));
-                            ui.label(RichText::new(&project.status).color(chart_2).size(12.0));
-                        });
+                // Header du projet
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.heading(egui::RichText::new(&project.name).color(fg).size(24.0).strong());
+                        ui.label(egui::RichText::new("Project kanban board").color(state.theme.muted_foreground));
                     });
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(egui::RichText::new("➕ Add Task").strong()).clicked() {
+                            // Action ajouter tâche
+                        }
+                    });
+                });
 
                 ui.add_space(20.0);
 
-                ui.label(RichText::new("Add a task").color(fg).size(16.0).strong());
-                ui.add_space(12.0);
-
-                Frame::none()
-                    .fill(card)
-                    .stroke(Stroke::new(1.0, border))
-                    .inner_margin(Margin::same(16.0))
-                    .rounding(Rounding::same(8.0))
-                    .show(ui, |ui| {
-                        ui.label(RichText::new("Task title").color(fg).size(13.0));
-                        ui.add_space(4.0);
-                        ui.add(
-                            egui::TextEdit::singleline(&mut state.task_title_input)
-                                .hint_text("e.g. Build the homepage")
-                                .desired_width(280.0)
-                        );
-                        ui.add_space(10.0);
-
-                        let add_clicked = ui.add(
-                            egui::Button::new(
-                                RichText::new("➕ Add").color(primary_fg).size(13.0)
-                            )
-                            .fill(primary)
-                            .min_size(egui::vec2(120.0, 32.0))
-                        ).clicked();
-
-                        if let Some(error) = &state.error_message.clone() {
-                            ui.add_space(8.0);
-                            ui.label(RichText::new(format!("⚠ {}", error)).color(state.theme.destructive).size(12.0));
-                        }
-                        if let Some(success) = &state.success_message.clone() {
-                            ui.add_space(8.0);
-                            ui.label(RichText::new(format!("✓ {}", success)).color(chart_2).size(12.0));
-                        }
-
-                        if add_clicked {
-                            if !state.task_title_input.is_empty() {
-                                state.error_message = None;
-                                state.success_message = Some("Task created!".to_string());
-                                state.task_title_input.clear();
-                            } else {
-                                state.success_message = None;
-                                state.error_message = Some("Enter a task title".to_string());
-                            }
-                        }
-                    });
-
-                ui.add_space(20.0);
-
-                ui.label(RichText::new("Tasks").color(fg).size(16.0).strong());
-                ui.add_space(12.0);
-
-                if state.current_tasks.is_empty() {
-                    ui.label(RichText::new("No tasks for this project.").color(muted).size(13.0));
-                } else {
-                    for task in &state.current_tasks.clone() {
-                        Frame::none()
-                            .fill(card)
-                            .stroke(Stroke::new(1.0, border))
-                            .inner_margin(Margin::symmetric(16.0, 10.0))
-                            .rounding(Rounding::same(8.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new("✓").color(chart_2));
-                                    ui.label(RichText::new(&task.title).color(fg).size(13.0));
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(RichText::new(&task.status).color(muted).size(11.0));
-                                    });
-                                });
-                            });
-                        ui.add_space(4.0);
-                    }
-                }
+                // --- LE KANBAN ---
+                // On divise l'espace en 3 colonnes égales
+                ui.columns(3, |columns| {
+                    render_kanban_column(&mut columns[0], "Todo", "Todo", state);
+                    render_kanban_column(&mut columns[1], "In Progress", "InProgress", state);
+                    render_kanban_column(&mut columns[2], "Done", "Done", state);
+                });
             }
         });
 }
 
+// Fonction pour dessiner une colonne (Todo, InProgress, etc.)
+fn render_kanban_column(ui: &mut egui::Ui, title: &str, status_filter: &str, state: &mut AppState) {
+    ui.vertical(|ui| {
+        // En-tête de colonne avec le badge du nombre
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(title).strong().size(16.0).color(state.theme.foreground));
+            let count = state.current_tasks.iter().filter(|t| t.status == status_filter).count();
+            
+            // Petit badge gris pour le compte
+            egui::Frame::none()
+                .fill(egui::Color32::from_gray(60))
+                .rounding(10.0)
+                .inner_margin(egui::Margin::symmetric(6.0, 2.0))
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new(count.to_string()).size(10.0).color(egui::Color32::WHITE));
+                });
+        });
+
+        ui.add_space(12.0);
+
+        // Zone scrollable pour les cartes
+        egui::ScrollArea::vertical()
+            .id_source(title)
+            .show(ui, |ui| {
+                for task in &state.current_tasks {
+                    if task.status == status_filter {
+                        draw_task_card(ui, task, state);
+                        ui.add_space(8.0);
+                    }
+                }
+            });
+    });
+}
+
+// Fonction pour dessiner une "Card" de tâche comme sur l'image
+fn draw_task_card(ui: &mut egui::Ui, task: &crate::state::Task, state: &AppState) {
+    let priority_color = match task.priority.as_str() {
+        "high" => egui::Color32::from_rgb(239, 68, 68),   // Rouge
+        "medium" => egui::Color32::from_rgb(245, 158, 11), // Orange
+        _ => egui::Color32::from_rgb(34, 197, 94),        // Vert
+    };
+
+    egui::Frame::none()
+        .fill(state.theme.card) // Gris foncé #252525
+        .rounding(6.0)
+        .stroke(egui::Stroke::new(1.0, state.theme.border))
+        .inner_margin(egui::Margin::same(12.0))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            
+            ui.vertical(|ui| {
+                // Titre de la tâche
+                ui.label(egui::RichText::new(&task.title).strong().color(state.theme.foreground));
+                
+                // Tags
+                ui.horizontal(|ui| {
+                    for tag in &task.tags {
+                        egui::Frame::none()
+                            .fill(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 30))
+                            .rounding(4.0)
+                            .inner_margin(egui::Margin::symmetric(4.0, 2.0))
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new(tag).size(9.0).color(egui::Color32::from_rgb(150, 150, 255)));
+                            });
+                    }
+                });
+
+                ui.add_space(12.0);
+
+                // Footer : Avatar + Assignee + Date
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(format!("👤 {}", task.assignee)).size(11.0).color(state.theme.muted_foreground));
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new(&task.due_date).size(10.0).color(state.theme.muted_foreground));
+                    });
+                });
+
+                ui.add_space(4.0);
+
+                // Badge de priorité en bas
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgba_unmultiplied(priority_color.r(), priority_color.g(), priority_color.b(), 20))
+                    .rounding(4.0)
+                    .inner_margin(egui::Margin::symmetric(6.0, 2.0))
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(&task.priority).color(priority_color).size(10.0).strong());
+                    });
+            });
+        });
+}
 fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: egui::Color32, primary: egui::Color32) -> bool {
     let color = if active { primary } else { fg };
     let btn = egui::Button::new(RichText::new(label).color(color).size(14.0))

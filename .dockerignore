@@ -1,0 +1,36 @@
+# Rust build artifacts
+target/
+**/target/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+
+# Environment files (keep .env templates)
+.env.local
+
+# Logs
+*.log
+
+# Rust example files
+exo/
+exo_Rust/
+Exo_C.c

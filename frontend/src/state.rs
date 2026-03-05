@@ -248,6 +248,103 @@ impl AppState {
             }
         }
     }
+
+    // ─── PROJECT METHODS ───────────────────────────────────────────────────────
+
+    pub fn create_project_sync(&mut self, name: &str, description: Option<&str>) -> Result<(), String> {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Non connecté".to_string()),
+        };
+
+        match self.api_client.create_project_sync(name, description, &token) {
+            Ok(project) => {
+                self.projects.push(project.clone());
+                eprintln!("✅ Project created: {}", project.name);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to create project: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    pub fn load_projects_sync(&mut self) {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        match self.api_client.get_projects_sync(1, 100, &token) {
+            Ok(response) => {
+                self.projects = response.data;
+                eprintln!("✅ Loaded {} projects", self.projects.len());
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load projects: {}", e);
+            }
+        }
+    }
+
+    // ─── TASK METHODS ──────────────────────────────────────────────────────────
+
+    pub fn create_task_sync(&mut self, project_id: &str, title: &str, description: Option<&str>) -> Result<(), String> {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Non connecté".to_string()),
+        };
+
+        match self.api_client.create_task_sync(project_id, title, description, &token) {
+            Ok(task) => {
+                self.current_tasks.push(task.clone());
+                eprintln!("✅ Task created: {}", task.title);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to create task: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    pub fn load_tasks_sync(&mut self, project_id: &str) {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        match self.api_client.get_tasks_sync(project_id, 1, 100, &token) {
+            Ok(response) => {
+                self.current_tasks = response.data;
+                eprintln!("✅ Loaded {} tasks", self.current_tasks.len());
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load tasks: {}", e);
+            }
+        }
+    }
+
+    pub fn update_task_status_sync(&mut self, project_id: &str, task_id: &str, status: &str) -> Result<(), String> {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Non connecté".to_string()),
+        };
+
+        match self.api_client.update_task_status_sync(project_id, task_id, status, &token) {
+            Ok(updated_task) => {
+                if let Some(task) = self.current_tasks.iter_mut().find(|t| t.id.to_string() == task_id) {
+                    task.status = updated_task.status.clone();
+                }
+                eprintln!("✅ Task status updated: {}", status);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to update task status: {}", e);
+                Err(e)
+            }
+        }
+    }
 }
 
 
