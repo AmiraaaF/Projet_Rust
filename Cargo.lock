@@ -4457,7 +4457,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "taks-service"
+name = "tasks-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
