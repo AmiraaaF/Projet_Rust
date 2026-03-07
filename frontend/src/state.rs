@@ -78,6 +78,10 @@ pub struct AppState {
     pub task_project_id_input: String,  
     pub show_task_form: bool,          
     pub tasks_loaded: bool,  
+    // Filtres pour les tâches
+    pub filter_my_tasks: bool,                  
+    pub filter_status: Option<String>,       
+    pub filter_changed: bool,                  
 
     pub projects: Vec<Project>,
     pub current_project: Option<Project>,
@@ -118,6 +122,10 @@ impl AppState {
             task_project_id_input: String::new(),
             show_task_form: false,
             tasks_loaded: false,
+            // Initialisation des filtres
+            filter_my_tasks: false,
+            filter_status: None,
+            filter_changed: false,
 
             projects: Vec::new(),
   
@@ -172,18 +180,34 @@ impl AppState {
 
     // ─── TASKS METHODS ──────────────────────────────────────────────────────
 
-    // Charge toutes les tâches de l'utilisateur connecté
+    // Charge les tâches avec filtres optionnels
     pub fn load_tasks_sync(&mut self) {
         use uuid::Uuid;
         use chrono::DateTime;
-        if self.tasks_loaded { return; }
+        // Recharger seulement si:
+        // 1. Les tâches ne sont pas encore chargées, OU
+        // 2. Les filtres ont changé
+        if self.tasks_loaded && !self.filter_changed { return; }
 
         let token = match &self.token {
             Some(t) => t.clone(),
             None => return,
         };
 
-        match self.api_client.list_tasks_sync(None, None, None, &token) {
+        // Construire les paramètres de filtre
+        let assignee_id = if self.filter_my_tasks {
+            self.current_user.as_ref().map(|u| u.id.to_string())
+        } else {
+            None
+        };
+        let status = self.filter_status.clone();
+
+        match self.api_client.list_tasks_sync(
+            assignee_id.as_deref(),
+            status.as_deref(),
+            None,
+            &token,
+        ) {
             Ok(responses) => {
                 self.current_tasks = responses
                     .into_iter()
@@ -214,6 +238,7 @@ impl AppState {
                     })
                     .collect();
                 self.tasks_loaded = true;
+                self.filter_changed = false;  // Réinitialiser le flag après chargement
                 eprintln!("{} tâche(s) chargée(s)", self.current_tasks.len());
             }
             Err(e) => eprintln!("Impossible de charger les tâches: {}", e),

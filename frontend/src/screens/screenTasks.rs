@@ -107,6 +107,34 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
                         stat_card(ui, "Done",        &done_count.to_string(),   card, fg, muted, border, green);
                     });
 
+                    ui.add_space(24.0);
+
+                    // ── FILTRES ───────────────────────────────────────────
+                    ui.horizontal(|ui| {
+              
+                        let filter_btn = |ui: &mut egui::Ui, label: &str, is_active: bool| -> bool {
+                            let color = if is_active { sidebar_primary } else { grey };
+                            let fg = if is_active { sidebar_primary_fg } else { muted };
+                            ui.add(egui::Button::new(RichText::new(label).color(fg).size(13.0)).fill(color)).clicked()
+                        };
+
+                        // "Mes tâches"
+                        if filter_btn(ui, "Mes tâches", state.filter_my_tasks) {
+                            state.filter_my_tasks = !state.filter_my_tasks;
+                            state.filter_changed = true;
+                        }
+                        ui.add_space(8.0);
+
+                        for (label, status) in [("Todo", "todo"), ("In Progress", "in_progress"), ("Done", "done")] {
+                            let is_active = state.filter_status.as_deref() == Some(status);
+                            if filter_btn(ui, label, is_active) {
+                                state.filter_status = if is_active { None } else { Some(status.to_string()) };
+                                state.filter_changed = true;
+                            }
+                            ui.add_space(8.0);
+                        }
+                    });
+
                     ui.add_space(32.0);
 
                     if state.show_task_form {

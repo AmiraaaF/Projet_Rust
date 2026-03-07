@@ -94,7 +94,6 @@ pub async fn list_tasks(State(state): State<AppState>, Query(filters): Query<Tas
         )
           AND ($2::uuid IS NULL OR t.assignee_id = $2)
           AND ($3::text IS NULL OR CAST(t.status AS TEXT) = $3)
-          AND ($4::uuid IS NULL OR t.project_id = $4)
         ORDER BY t.created_at DESC
         "#,
     )
