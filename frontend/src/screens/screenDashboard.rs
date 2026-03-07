@@ -51,6 +51,10 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                 state.go_to(Screen::Projects);
             }
             ui.add_space(4.0);
+            if sidebar_item(ui, "✅ Tasks", false, fg, primary) {
+                state.go_to(Screen::Tasks);
+            }
+            ui.add_space(4.0);
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
             }

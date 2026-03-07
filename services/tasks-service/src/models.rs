@@ -58,12 +58,8 @@ pub struct CreateTaskRequest {
 // }
 
 #[derive(Debug, Deserialize)]
-
-//filtre et recherche par titre des taches 
 pub struct TaskFilters {
-    pub project_id: Option<Uuid>,
+
     pub assignee_id: Option<Uuid>,
     pub status: Option<String>,
-    pub priority: Option<String>,
-    pub search: Option<String>,
 }

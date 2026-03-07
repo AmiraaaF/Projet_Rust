@@ -4,7 +4,7 @@ use axum::{
 };
 use serde_json::json;
 use shared::database::init_pool;
-use sqlx::PgPool;
+
 
 mod handlers;
 mod models;
@@ -25,11 +25,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
 
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET must be set");
+
     let db = init_pool(&database_url, 5)
         .await
         .expect("Failed to initialize database pool");
 
-    let state = AppState { db };
+    let state = AppState { db, jwt_secret };
 
     let router = Router::new()
         .route("/health", get(health_check))

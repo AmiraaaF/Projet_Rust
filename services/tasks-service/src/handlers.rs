@@ -6,6 +6,7 @@ use axum::{
 use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::models::{CreateTaskRequest, TaskFilters};
@@ -13,6 +14,7 @@ use crate::models::{CreateTaskRequest, TaskFilters};
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub jwt_secret: String, 
 }
 
 pub async fn create_task(State(state): State<AppState>,Json(payload): Json<CreateTaskRequest>,) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
@@ -42,31 +44,63 @@ pub async fn create_task(State(state): State<AppState>,Json(payload): Json<Creat
     }
 }
 
-pub async fn list_tasks(
-    State(state): State<AppState>,
-    Query(filters): Query<TaskFilters>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let search_pattern = filters.search.as_deref()
-        .map(|s| format!("%{}%", s));
+pub async fn list_tasks(State(state): State<AppState>, Query(filters): Query<TaskFilters>,headers: axum::http::HeaderMap,) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
 
+    //Extraire l'utilisateur connecté
+    let token = match headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        Some(t) => t.to_string(),
+        None => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token manquant"})),
+        )),
+    };
+
+    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
+    let claims = match auth_service.validate_token(&token) {
+        Ok(c) => c,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide ou expiré"})),
+        )),
+    };
+
+    let connected_user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide"})),
+        )),
+    };
+
+    // 2. Récupérer les tâches des projets où l'utilisateur connecté est membre.
+    //    soit il est propriétaire soit il est membre 
     match sqlx::query(
         r#"
-        SELECT id, project_id, assignee_id, title, description,
-               CAST(status AS TEXT), CAST(priority AS TEXT), deadline, created_at, updated_at
-        FROM tasks
-        WHERE ($1::uuid IS NULL OR project_id = $1)
-          AND ($2::uuid IS NULL OR assignee_id = $2)
-          AND ($3::text IS NULL OR CAST(status AS TEXT) = $3)
-          AND ($4::text IS NULL OR CAST(priority AS TEXT) = $4)
-          AND ($5::text IS NULL OR title ILIKE $5)
-        ORDER BY created_at DESC
+        SELECT t.id, t.project_id, t.assignee_id, t.title, t.description,
+               CAST(t.status AS TEXT), CAST(t.priority AS TEXT),
+               t.deadline, t.created_at, t.updated_at,
+               u.name AS assignee_name, p.name AS project_name
+        FROM tasks t
+        LEFT JOIN users u ON t.assignee_id = u.id
+        LEFT JOIN projects p ON t.project_id = p.id
+        WHERE t.project_id IN (
+            SELECT id FROM projects WHERE owner_id = $1
+            UNION
+            SELECT project_id FROM project_members WHERE user_id = $1
+        )
+          AND ($2::uuid IS NULL OR t.assignee_id = $2)
+          AND ($3::text IS NULL OR CAST(t.status AS TEXT) = $3)
+          AND ($4::uuid IS NULL OR t.project_id = $4)
+        ORDER BY t.created_at DESC
         "#,
     )
-    .bind(filters.project_id)
+    .bind(connected_user_id)
     .bind(filters.assignee_id)
     .bind(filters.status.as_deref())
-    .bind(filters.priority.as_deref())
-    .bind(search_pattern.as_deref())
     .fetch_all(&state.db)
     .await
     {
@@ -187,7 +221,62 @@ pub async fn get_task(
 pub async fn mark_task_done(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+
+
+    let token = match headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        Some(t) => t.to_string(),
+        None => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token manquant"})),
+        )),
+    };
+
+    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
+    let claims = match auth_service.validate_token(&token) {
+        Ok(c) => c,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide ou expiré"})),
+        )),
+    };
+
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(uid) => uid,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide"})),
+        )),
+    };
+
+    let task_row = match sqlx::query("SELECT assignee_id FROM tasks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("Task {} not found", id)})),
+        )),
+        Err(e) => return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )),
+    };
+
+    let assignee_id: Option<Uuid> = task_row.get(0);
+    if assignee_id != Some(user_id) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Tu n'es pas autorisé à modifier cette tâche"})),
+        ));
+    }
     match sqlx::query(
         r#"
         UPDATE tasks SET
@@ -213,11 +302,76 @@ pub async fn mark_task_done(
         )),
     }
 }
-
+//seul le proprietaire du projet peut supprimie les taches de ce projet si pas proprio il peut pas 
 pub async fn delete_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
 ) -> Result<StatusCode, (StatusCode, Json<Value>)> {
+
+    let token = match headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        Some(t) => t.to_string(),
+        None => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token manquant"})),
+        )),
+    };
+    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
+    let claims = match auth_service.validate_token(&token) {
+        Ok(c) => c,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide ou expiré"})),
+        )),
+    };
+    let connected_user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide"})),
+        )),
+    };
+
+    let row = sqlx::query("SELECT project_id FROM tasks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let project_id: Uuid = match row {
+        Some(row) => row.get(0),
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": format!("Task {} not found", id)})),
+            ))
+        }
+    };
+    
+    let owner_row = sqlx::query("SELECT owner_id FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let owner_id: Uuid = match owner_row {
+        Some(row) => row.get(0),
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": format!("Project {} not found", project_id)})),
+            ))
+        }
+    };
+    if connected_user_id != owner_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Seul le propriétaire du projet peut supprimer cette tâche."})),
+        ));
+    }
+
     match sqlx::query("DELETE FROM tasks WHERE id = $1 RETURNING id")
         .bind(id)
         .fetch_optional(&state.db)
@@ -248,5 +402,7 @@ fn task_row_to_json(row: &sqlx::postgres::PgRow) -> Value {
         "deadline":    row.get::<Option<chrono::DateTime<Utc>>, _>(7),
         "created_at":  row.get::<chrono::DateTime<Utc>, _>(8),
         "updated_at":  row.get::<chrono::DateTime<Utc>, _>(9),
+        "assignee_name": row.try_get::<Option<String>, _>(10).unwrap_or(None),
+        "project_name": row.try_get::<Option<String>, _>(11).unwrap_or(None),
     })
 }
