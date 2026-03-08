@@ -1,7 +1,11 @@
 use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke};
 use crate::state::{AppState, Screen};
+use crate::screens::screenDashboard::{sidebar_item_with_badge};
 
 pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
+    state.poll_notifications_sync();
+    ctx.request_repaint();
+
     let bg          = state.theme.background;
     let sidebar_bg  = state.theme.sidebar;
     let fg          = state.theme.foreground;
@@ -53,6 +57,10 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(4.0);
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
+            }
+            ui.add_space(4.0);
+            if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
+                state.go_to(Screen::Notifications);
             }
         });
 

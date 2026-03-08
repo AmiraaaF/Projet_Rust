@@ -85,22 +85,23 @@ services:
       - mini-saas-network
     restart: on-failure
 
-  # notification-service:
-  #   build:
-  #     context: .
-  #     dockerfile: services/notification-service/Dockerfile
-  #   container_name: mini-saas-notification-service
-  #   environment:
-  #     DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
-  #     JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
-  #   ports:
-  #     - "3004:3004"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - mini-saas-network
-
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: mini-saas-notification-service
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mini-saas-network
+    restart: on-failure
+    
 volumes:
   postgres_data:
 

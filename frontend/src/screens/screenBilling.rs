@@ -1,5 +1,6 @@
 use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke, ScrollArea, Color32, Vec2};
 use crate::state::{AppState, Screen};
+use crate::screens::screenDashboard::{sidebar_item, sidebar_item_with_badge};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PLAN
@@ -164,6 +165,8 @@ impl InvoiceStatus {
 
 pub fn billing_screen(ctx: &egui::Context, state: &mut AppState) {
     state.load_invoices_sync();
+    state.poll_notifications_sync();
+    ctx.request_repaint();
 
     let bg             = state.theme.background;
     let sidebar_bg     = state.theme.sidebar;
@@ -213,6 +216,10 @@ pub fn billing_screen(ctx: &egui::Context, state: &mut AppState) {
             if sidebar_item(ui, "📁 Projects",  false, fg, primary) { state.go_to(Screen::Projects); }
             ui.add_space(4.0);
             sidebar_item(ui, "💳 Billing", true, fg, primary);
+            ui.add_space(4.0);
+            if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
+                state.go_to(Screen::Notifications);
+            }
         });
 
     // ── CENTRAL PANEL ─────────────────────────────────────────────────────────
@@ -281,7 +288,7 @@ fn current_subscription_card(
                             ui.label(RichText::new(format!("⚠ {}", err))
                                 .color(Color32::from_rgb(239, 68, 68)).size(12.0));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button("[X]").clicked() {
+                                if ui.small_button("X").clicked() {
                                     state.billing_state.last_error = None;
                                 }
                             });
@@ -740,7 +747,7 @@ fn invoice_section(
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("[OK] {}", msg)).color(chart_2).size(13.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("[X]").clicked() {
+                        if ui.small_button("X").clicked() {
                             state.billing_state.download_message = None;
                         }
                     });
@@ -791,13 +798,6 @@ fn section_header(ui: &mut egui::Ui, title: &str, subtitle: &str, fg: Color32, m
     ui.label(RichText::new(subtitle).color(muted).size(13.0));
 }
 
-fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: Color32, primary: Color32) -> bool {
-    let color = if active { primary } else { fg };
-    let btn = egui::Button::new(RichText::new(label).color(color).size(14.0))
-        .fill(Color32::TRANSPARENT)
-        .min_size(egui::vec2(156.0, 32.0));
-    ui.add(btn).clicked()
-}
 
 fn detail_row(ui: &mut egui::Ui, label: &str, value: &str, value_color: Color32, muted: Color32) {
     ui.horizontal(|ui| {
