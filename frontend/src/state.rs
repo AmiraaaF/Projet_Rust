@@ -2,6 +2,7 @@ use shared::models::{Project, Task, UserPublic};
 use crate::themes::DarkTheme;
 use crate::screens::screenBilling::{Plan, BillingInvoice, InvoiceStatus};
 use crate::api::ApiClient;
+use uuid;
 
 #[derive(Clone, Debug)]
 pub enum Screen {
@@ -68,6 +69,12 @@ pub struct AppState {
     pub project_name_input: String,
     pub project_description_input: String,
     pub task_title_input: String,
+    // Champs pour la gestion des tâches
+    pub new_task_title_input: String,
+    pub new_task_description_input: String,
+    pub show_add_task_form: bool,
+    pub dragging_task_id: Option<uuid::Uuid>,
+    // Données
     pub projects: Vec<Project>,
     pub current_project: Option<Project>,
     pub current_tasks: Vec<Task>,
@@ -88,7 +95,7 @@ impl Default for AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        let api_url = "http://localhost:3001".to_string();
+        let api_url = "http://localhost:3000".to_string();
         Self {
             current_screen: Screen::Login,
             current_user: None,
@@ -99,6 +106,12 @@ impl AppState {
             project_name_input: String::new(),
             project_description_input: String::new(),
             task_title_input: String::new(),
+            // Nouveaux champs pour les tâches
+            new_task_title_input: String::new(),
+            new_task_description_input: String::new(),
+            show_add_task_form: false,
+            dragging_task_id: None,
+            // Données
             projects: Vec::new(),
             current_project: None,
             current_tasks: Vec::new(),
@@ -125,6 +138,10 @@ impl AppState {
         self.project_name_input.clear();
         self.project_description_input.clear();
         self.task_title_input.clear();
+        self.new_task_title_input.clear();
+        self.new_task_description_input.clear();
+        self.show_add_task_form = false;
+        self.dragging_task_id = None;
     }
 
     pub fn logout(&mut self) {
@@ -133,11 +150,34 @@ impl AppState {
         self.error_message = None;
         self.success_message = None;
         self.clear_forms();
-        self.projects.clear();
+        // Ne PAS vider les projets - ils resteront en cache local
+        // self.projects.clear(); // ← Commenté
         self.current_project = None;
         self.current_tasks.clear();
         self.billing_state = BillingState::default();
         self.current_screen = Screen::Login;
+    }
+
+    // ─── PROJECT METHODS ───────────────────────────────────────────────────────
+    
+    pub fn load_projects_sync(&mut self) {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        self.is_loading = true;
+        match self.api_client.get_projects_sync(1, 50, &token) {
+            Ok(response) => {
+                self.projects = response.data;
+                self.error_message = None;
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to load projects: {}", e);
+                self.error_message = Some(format!("Failed to load projects: {}", e));
+            }
+        }
+        self.is_loading = false;
     }
 
     // ─── BILLING METHODS ───────────────────────────────────────────────────────
@@ -266,23 +306,6 @@ impl AppState {
             Err(e) => {
                 eprintln!("❌ Failed to create project: {}", e);
                 Err(e)
-            }
-        }
-    }
-
-    pub fn load_projects_sync(&mut self) {
-        let token = match &self.token {
-            Some(t) => t.clone(),
-            None => return,
-        };
-
-        match self.api_client.get_projects_sync(1, 100, &token) {
-            Ok(response) => {
-                self.projects = response.data;
-                eprintln!("✅ Loaded {} projects", self.projects.len());
-            }
-            Err(e) => {
-                eprintln!("⚠️ Failed to load projects: {}", e);
             }
         }
     }

@@ -90,8 +90,13 @@ pub fn login_screen(ctx: &egui::Context, state: &mut AppState) {
                                         state.token = Some(auth_response.access_token);
                                         state.error_message = None;
                                         state.success_message = Some("✅ Connexion réussie!".to_string());
+                                        
                                         // Load subscription plan for this user
                                         state.load_subscription_for_user_sync(&auth_response.user.id.to_string());
+                                        
+                                        // Load user's projects
+                                        state.load_projects_sync();
+                                        
                                         state.go_to(Screen::Dashboard);
                                     }
                                     Err(_err) => {

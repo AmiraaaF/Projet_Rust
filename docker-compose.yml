@@ -34,6 +34,28 @@ services:
     networks:
       - mini-saas-network
 
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: mini-saas-api-gateway
+    environment:
+      USER_SERVICE_URL: http://user-service:3001
+      PROJECT_SERVICE_URL: http://project-service:3002
+      BILLING_SERVICE_URL: http://billing-service:3003
+      NOTIFICATION_SERVICE_URL: http://notification-service:3004
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+      JWT_EXPIRATION: "3600"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - user-service
+      - project-service
+      - billing-service
+    networks:
+      - mini-saas-network
+    restart: on-failure
+
   user-service:
     build:
       context: .
@@ -52,21 +74,22 @@ services:
       - mini-saas-network
     restart: on-failure
 
-  # project-service:
-  #   build:
-  #     context: .
-  #     dockerfile: services/project-service/Dockerfile
-  #   container_name: mini-saas-project-service
-  #   environment:
-  #     DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
-  #     JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
-  #   ports:
-  #     - "3002:3002"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - mini-saas-network
+  project-service:
+    build:
+      context: .
+      dockerfile: services/project-service/Dockerfile
+    container_name: mini-saas-project-service
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mini-saas-network
+    restart: on-failure
 
   billing-service:
     build:

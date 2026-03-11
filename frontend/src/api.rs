@@ -1,18 +1,15 @@
 use shared::models::*;
+use uuid;
+use chrono;
 
 #[derive(Clone)]
 pub struct ApiClient {
-    base_url: String,           
-    billing_url: String,        
+    base_url: String,
 }
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        
-        let billing_url = base_url
-            .replace(":3001", ":3003")
-            .replace(":3002", ":3003");
-        Self { base_url, billing_url }
+        Self { base_url }
     }
 
     // ─── AUTH ──────────────────────────────────────────────────────────────────
@@ -87,24 +84,48 @@ impl ApiClient {
         let url = format!("{}/projects", self.base_url);
         let body = serde_json::json!({ "name": name, "description": description });
 
-        client.post(&url)
+        let resp = client.post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .json(&body)
             .send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+            
+        if resp.status().is_success() {
+            resp.json::<Project>().map_err(|e| format!("Erreur parsing: {}", e))
+        } else {
+            Err(format!("Erreur API: {}", resp.status()))
+        }
     }
 
     pub fn get_projects_sync(&self, page: i64, limit: i64, token: &str) -> Result<PaginatedResponse<Project>, String> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/projects?page={}&limit={}", self.base_url, page, limit);
-        client.get(&url)
+        let resp = client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+            
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(format!("Erreur serveur: {}", status));
+        }
+        
+        // Lire le texte brut pour debug
+        let text = resp.text().map_err(|e| format!("Erreur lecture: {}", e))?;
+        
+        // Si c'est un tableau vide, créer une PaginatedResponse vide
+        if text == "[]" {
+            return Ok(PaginatedResponse {
+                data: vec![],
+                total: 0,
+                page: page,
+                limit: limit,
+            });
+        }
+        
+        // Sinon, essayer de parser comme PaginatedResponse
+        serde_json::from_str(&text)
+            .map_err(|e| format!("Réponse invalide: {} (reçu: {})", e, text))
     }
 
     pub fn get_project_sync(&self, project_id: &str, token: &str) -> Result<Project, String> {
@@ -144,7 +165,7 @@ impl ApiClient {
 
     pub fn update_task_status_sync(&self, project_id: &str, task_id: &str, status: &str, token: &str) -> Result<Task, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/projects/{}/tasks/{}", self.base_url, project_id, task_id);
+        let url = format!("{}/tasks/{}", self.base_url, task_id);
         let body = serde_json::json!({ "status": status });
         client.patch(&url)
             .header("Authorization", format!("Bearer {}", token))
@@ -160,7 +181,7 @@ impl ApiClient {
 
     pub fn get_subscription_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/billing/subscriptions/{}", self.billing_url, user_id);
+        let url = format!("{}/billing/subscriptions/{}", self.base_url, user_id);
 
         let resp = client
             .get(&url)
@@ -180,7 +201,7 @@ impl ApiClient {
 
     pub fn update_subscription_sync(&self, user_id: &str, plan: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/billing/subscriptions/{}", self.billing_url, user_id);
+        let url = format!("{}/billing/subscriptions/{}", self.base_url, user_id);
         let body = serde_json::json!({ "plan": plan });
 
         let resp = client
@@ -210,7 +231,7 @@ impl ApiClient {
     
     pub fn cancel_subscription_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/billing/subscriptions/{}/cancel", self.billing_url, user_id);
+        let url = format!("{}/billing/subscriptions/{}/cancel", self.base_url, user_id);
 
         let resp = client
             .post(&url)
@@ -235,7 +256,7 @@ impl ApiClient {
     
     pub fn get_invoices_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/billing/invoices/{}", self.billing_url, user_id);
+        let url = format!("{}/billing/invoices/{}", self.base_url, user_id);
 
         let resp = client
             .get(&url)
