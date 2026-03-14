@@ -61,6 +61,10 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
             }
+            ui.add_space(4.0);
+            if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
+                state.go_to(Screen::Notifications);
+            }
         });
 
     egui::CentralPanel::default()

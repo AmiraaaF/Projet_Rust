@@ -4,65 +4,60 @@ use chrono;
 
 #[derive(Clone)]
 pub struct ApiClient {
-    base_url: String,
+    base_url:    String,  // user-service  :3001
+    billing_url: String,  // billing-service :3003
+    notif_url:   String,  // notification-service :3004
 }
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        Self { base_url }
+        let billing_url = base_url
+            .replace(":3001", ":3003")
+            .replace(":3002", ":3003");
+        let notif_url = base_url
+            .replace(":3001", ":3004")
+            .replace(":3002", ":3004")
+            .replace(":3003", ":3004");
+        Self { base_url, billing_url, notif_url }
     }
+
+    pub fn notif_url(&self) -> &str { &self.notif_url }
 
     // ─── AUTH ──────────────────────────────────────────────────────────────────
 
     pub fn login_sync(&self, email: &str, password: &str) -> Result<AuthResponse, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/auth/login", self.base_url);
+        let url  = format!("{}/auth/login", self.base_url);
         let body = serde_json::json!({ "email": email, "password": password });
 
-        let resp = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
+        let resp = client.post(&url).json(&body).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?;
-
         let status = resp.status();
         if status.is_success() {
-            resp.json::<AuthResponse>()
-                .map_err(|e| format!("Réponse invalide du serveur: {}", e))
+            resp.json::<AuthResponse>().map_err(|e| format!("Réponse invalide: {}", e))
         } else {
             let text = resp.text().unwrap_or_default();
-            let msg = serde_json::from_str::<serde_json::Value>(&text)
-                .ok()
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
                 .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| format!("Erreur serveur ({})", status));
-            Err(msg)
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
         }
     }
 
     pub fn register_sync(&self, email: &str, name: &str, password: &str) -> Result<AuthResponse, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/auth/register", self.base_url);
+        let url  = format!("{}/auth/register", self.base_url);
         let body = serde_json::json!({ "email": email, "name": name, "password": password });
 
-        let resp = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
+        let resp = client.post(&url).json(&body).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?;
-
         let status = resp.status();
         if status.is_success() {
-            resp.json::<AuthResponse>()
-                .map_err(|e| format!("Réponse invalide: {}", e))
+            resp.json::<AuthResponse>().map_err(|e| format!("Réponse invalide: {}", e))
         } else {
             let text = resp.text().unwrap_or_default();
-            let msg = serde_json::from_str::<serde_json::Value>(&text)
-                .ok()
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
                 .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| format!("Erreur serveur ({})", status));
-            Err(msg)
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
         }
     }
 
@@ -73,15 +68,14 @@ impl ApiClient {
         let url = format!("{}/users?page={}&limit={}", self.base_url, page, limit);
         client.get(&url).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
     // ─── PROJECTS ──────────────────────────────────────────────────────────────
 
     pub fn create_project_sync(&self, name: &str, description: Option<&str>, token: &str) -> Result<Project, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/projects", self.base_url);
+        let url  = format!("{}/projects", self.base_url);
         let body = serde_json::json!({ "name": name, "description": description });
 
         let resp = client.post(&url)
@@ -131,31 +125,35 @@ impl ApiClient {
     pub fn get_project_sync(&self, project_id: &str, token: &str) -> Result<Project, String> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/projects/{}", self.base_url, project_id);
-        client.get(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
+        client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
     pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<PaginatedResponse<Task>, String> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/projects/{}/tasks?page={}&limit={}", self.base_url, project_id, page, limit);
-        client.get(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
+        client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
     pub fn create_task_sync(&self, project_id: &str, title: &str, description: Option<&str>, token: &str) -> Result<Task, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/projects/{}/tasks", self.base_url, project_id);
+        let url  = format!("{}/projects/{}/tasks", self.base_url, project_id);
         let body = serde_json::json!({ "title": title, "description": description });
-        client.post(&url)
+        client.post(&url).header("Authorization", format!("Bearer {}", token)).json(&body).send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    pub fn update_task_status_sync(&self, project_id: &str, task_id: &str, status: &str, token: &str) -> Result<Task, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/{}", self.base_url, task_id);
+        let body = serde_json::json!({ "status": status });
+        client.patch(&url)
             .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
@@ -186,16 +184,12 @@ impl ApiClient {
         let resp = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .map_err(|e| format!("Erreur réseau billing: {}", e))?;
-
+            .send().map_err(|e| format!("Erreur réseau billing: {}", e))?;
         let status = resp.status();
         if status.is_success() {
-            resp.json::<serde_json::Value>()
-                .map_err(|e| format!("Réponse billing invalide: {}", e))
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse billing invalide: {}", e))
         } else {
-            let text = resp.text().unwrap_or_default();
-            Err(format!("Erreur billing ({}): {}", status, text))
+            Err(format!("Erreur billing ({})", status))
         }
     }
 
@@ -203,32 +197,20 @@ impl ApiClient {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/billing/subscriptions/{}", self.base_url, user_id);
         let body = serde_json::json!({ "plan": plan });
-
-        let resp = client
-            .patch(&url)
-            .header("Content-Type", "application/json")
+        let resp = client.patch(&url)
             .header("Authorization", format!("Bearer {}", token))
-            .json(&body)
-            .send()
-            .map_err(|e| format!("Erreur réseau billing: {}", e))?;
-
+            .json(&body).send().map_err(|e| format!("Erreur réseau billing: {}", e))?;
         let status = resp.status();
-        let text = resp.text().unwrap_or_default();
-
+        let text   = resp.text().unwrap_or_default();
         if status.is_success() {
-            serde_json::from_str::<serde_json::Value>(&text)
-                .map_err(|e| format!("Réponse billing invalide: {}", e))
+            serde_json::from_str::<serde_json::Value>(&text).map_err(|e| format!("Réponse invalide: {}", e))
         } else {
-            // Retourner le message d'erreur du serveur
-            let msg = serde_json::from_str::<serde_json::Value>(&text)
-                .ok()
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
                 .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| format!("Erreur serveur billing ({})", status));
-            Err(msg)
+                .unwrap_or_else(|| format!("Erreur billing ({})", status)))
         }
     }
 
-    
     pub fn cancel_subscription_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/billing/subscriptions/{}/cancel", self.base_url, user_id);
@@ -236,24 +218,18 @@ impl ApiClient {
         let resp = client
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .map_err(|e| format!("Erreur réseau billing: {}", e))?;
-
+            .send().map_err(|e| format!("Erreur réseau billing: {}", e))?;
         let status = resp.status();
-        let text = resp.text().unwrap_or_default();
-
+        let text   = resp.text().unwrap_or_default();
         if status.is_success() {
             serde_json::from_str(&text).map_err(|e| format!("Réponse invalide: {}", e))
         } else {
-            let msg = serde_json::from_str::<serde_json::Value>(&text)
-                .ok()
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
                 .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| format!("Erreur ({})", status));
-            Err(msg)
+                .unwrap_or_else(|| format!("Erreur ({})", status)))
         }
     }
 
-    
     pub fn get_invoices_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/billing/invoices/{}", self.base_url, user_id);
@@ -261,14 +237,125 @@ impl ApiClient {
         let resp = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .map_err(|e| format!("Erreur réseau billing: {}", e))?;
-
+            .send().map_err(|e| format!("Erreur réseau billing: {}", e))?;
         let status = resp.status();
         if status.is_success() {
             resp.json().map_err(|e| format!("Réponse invalide: {}", e))
         } else {
             Err(format!("Erreur billing ({})", status))
+        }
+    }
+
+    // ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
+
+    pub fn get_notifications_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notifications/{}?limit=50", self.notif_url, user_id);
+        let resp = client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse notif invalide: {}", e))
+        } else {
+            Err(format!("Erreur notif ({})", status))
+        }
+    }
+
+    pub fn get_notif_stats_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notifications/{}/stats", self.notif_url, user_id);
+        let resp = client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur notif stats ({})", status))
+        }
+    }
+
+    pub fn mark_notif_read_sync(&self, notif_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notification/{}/read", self.notif_url, notif_id);
+        let resp = client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur mark read ({})", status))
+        }
+    }
+
+    pub fn mark_all_read_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notifications/{}/read-all", self.notif_url, user_id);
+        let resp = client.post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur mark all read ({})", status))
+        }
+    }
+
+    pub fn delete_notif_sync(&self, notif_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notification/{}", self.notif_url, notif_id);
+        let resp = client.delete(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur delete notif ({})", status))
+        }
+    }
+
+    pub fn clear_read_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/notifications/{}/clear-read", self.notif_url, user_id);
+        let resp = client.delete(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur clear read ({})", status))
+        }
+    }
+
+
+    pub fn send_notif_event_sync(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        payload: serde_json::Value,
+        token: &str,
+    ) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/events", self.notif_url);
+        let body = serde_json::json!({
+            "user_id":    user_id,
+            "event_type": event_type,
+            "payload":    payload,
+        });
+        let resp = client.post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur event ({})", status))
         }
     }
 }
