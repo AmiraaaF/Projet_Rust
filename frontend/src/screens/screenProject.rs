@@ -112,45 +112,38 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
                     }
 
                     if create_clicked {
-                        if !state.project_name_input.is_empty() {
-                            state.is_loading = true;
-                            
-                            // Utiliser l'API pour créer le projet
-                            if let Some(token) = &state.token {
-                                let description = if state.project_description_input.is_empty() { 
-                                    None 
-                                } else { 
-                                    Some(state.project_description_input.as_str()) 
-                                };
-                                
-                                match state.api_client.create_project_sync(
-                                    &state.project_name_input,
-                                    description,
-                                    token
-                                ) {
-                                    Ok(new_project) => {
-                                        // Ajouter le projet à la liste locale
-                                        state.projects.push(new_project);
-                                        
-                                        // Afficher le message de succès et vider les champs
-                                        state.error_message = None;
-                                        state.success_message = Some("Project created successfully!".to_string());
-                                        state.project_name_input.clear();
-                                        state.project_description_input.clear();
-                                    },
-                                    Err(error) => {
-                                        state.success_message = None;
-                                        state.error_message = Some(format!("Failed to create project: {}", error));
-                                    }
-                                }
-                            } else {
-                                state.error_message = Some("Not authenticated".to_string());
-                            }
-                            
-                            state.is_loading = false;
-                        } else {
+                        if state.project_name_input.trim().is_empty() {
                             state.success_message = None;
                             state.error_message = Some("Please enter a project name".to_string());
+                        } else {
+                            // Use centralized AppState method which handles token and API call
+                            state.is_loading = true;
+                            // clone inputs to avoid borrowing `state` immutably while calling a mutable method
+                            let name = state.project_name_input.clone();
+                            let description_owned = if state.project_description_input.trim().is_empty() {
+                                None
+                            } else {
+                                Some(state.project_description_input.clone())
+                            };
+
+                            eprintln!("DEBUG: create project clicked, name='{}'", name);
+
+                            match state.create_project_sync(&name, description_owned.as_deref()) {
+                                Ok(()) => {
+                                    state.error_message = None;
+                                    state.success_message = Some("Project created successfully!".to_string());
+                                    state.project_name_input.clear();
+                                    state.project_description_input.clear();
+                                    eprintln!("DEBUG: project creation succeeded");
+                                }
+                                Err(err) => {
+                                    state.success_message = None;
+                                    state.error_message = Some(format!("Failed to create project: {}", err));
+                                    eprintln!("DEBUG: project creation failed: {}", err);
+                                }
+                            }
+
+                            state.is_loading = false;
                         }
                     }
                 });
@@ -178,7 +171,10 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
                                         RichText::new("Open").color(primary_fg).size(12.0)
                                     ).fill(primary);
                                     if ui.add(btn).clicked() {
+                                        // Set current project and preload its tasks before navigating
                                         state.current_project = Some(project.clone());
+                                        // load tasks for the selected project (synchronous blocking call)
+                                        state.load_tasks_sync(&project.id.to_string());
                                         state.go_to(Screen::ProjectDetail);
                                     }
                                 });

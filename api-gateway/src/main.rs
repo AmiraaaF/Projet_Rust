@@ -183,18 +183,26 @@ async fn proxy_request(
     let body_bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
-    
+
+    // Convert axum method to reqwest Method (avoid http-version mismatch)
+    let req_method = reqwest::Method::from_bytes(method.as_str().as_bytes())
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
     // Build the request
-    let mut proxy_req = client.request(method.clone(), &url);
-    
-    // Forward relevant headers
+    let mut proxy_req = client.request(req_method, &url);
+
+    // Forward relevant headers as strings (skip non-UTF8)
     if let Some(auth) = headers.get("authorization") {
-        proxy_req = proxy_req.header("authorization", auth);
+        if let Ok(s) = auth.to_str() {
+            proxy_req = proxy_req.header("authorization", s);
+        }
     }
     if let Some(content_type) = headers.get("content-type") {
-        proxy_req = proxy_req.header("content-type", content_type);
+        if let Ok(s) = content_type.to_str() {
+            proxy_req = proxy_req.header("content-type", s);
+        }
     }
-    
+
     // Add body if not empty
     if !body_bytes.is_empty() {
         proxy_req = proxy_req.body(body_bytes);
@@ -209,19 +217,24 @@ async fn proxy_request(
             StatusCode::BAD_GATEWAY
         })?;
     
-    // Build response
+    // Build response: convert reqwest types back to axum/http types
     let status = resp.status();
     let resp_headers = resp.headers().clone();
     let body_bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
-    
-    let mut response = Response::builder()
-        .status(status);
-    
-    // Forward content-type header
-    if let Some(content_type) = resp_headers.get("content-type") {
-        response = response.header("content-type", content_type);
+
+    // Convert status code
+    let axum_status = axum::http::StatusCode::from_u16(status.as_u16())
+        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+
+    let mut response = Response::builder().status(axum_status);
+
+    // Forward headers (string values only)
+    for (name, value) in resp_headers.iter() {
+        if let Ok(s) = value.to_str() {
+            response = response.header(name.as_str(), s);
+        }
     }
-    
+
     response
         .body(Body::from(body_bytes))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
