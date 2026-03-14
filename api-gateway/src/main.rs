@@ -80,10 +80,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/tasks/:id", delete(proxy_to_project_service))
         // Billing routes -> billing-service
         .route("/billing/subscriptions/:user_id", get(proxy_to_billing_service))
+        .route("/billing/subscriptions/:user_id", patch(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", post(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", delete(proxy_to_billing_service))
-        .route("/billing/invoices/:user_id", get(proxy_to_billing_service))
-        .with_state(state)
+            .route("/billing/invoices/:user_id", get(proxy_to_billing_service))
+        // Notification routes -> notification-service
+        .route("/notifications/:user_id",          get(proxy_to_notification_service))
+        .route("/notifications/:user_id/stats",    get(proxy_to_notification_service))
+        .route("/notifications/:user_id/read-all", post(proxy_to_notification_service))
+        .route("/notifications/:user_id/clear-read", delete(proxy_to_notification_service))
+        .route("/notification",                    post(proxy_to_notification_service))
+        .route("/notification/:id",                get(proxy_to_notification_service))
+        .route("/notification/:id/read",           patch(proxy_to_notification_service))
+        .route("/notification/:id",                delete(proxy_to_notification_service))
+        .route("/events",                          post(proxy_to_notification_service))
+            .with_state(state)
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
@@ -163,6 +174,14 @@ async fn proxy_to_billing_service(
     req: Request,
 ) -> Result<Response, StatusCode> {
     proxy_request(&state.billing_service_url, headers, req).await
+}
+
+async fn proxy_to_notification_service(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    req: Request,
+) -> Result<Response, StatusCode> {
+    proxy_request(&state.notification_service_url, headers, req).await
 }
 
 async fn proxy_request(
