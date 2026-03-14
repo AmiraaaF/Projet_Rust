@@ -147,19 +147,7 @@ impl ApiClient {
             .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
-    pub fn update_task_status_sync(&self, project_id: &str, task_id: &str, status: &str, token: &str) -> Result<Task, String> {
-        let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/{}", self.base_url, task_id);
-        let body = serde_json::json!({ "status": status });
-        client.patch(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json()
-            .map_err(|e| format!("Réponse invalide: {}", e))
-    }
+    
 
     pub fn update_task_status_sync(&self, project_id: &str, task_id: &str, status: &str, token: &str) -> Result<Task, String> {
         let client = reqwest::blocking::Client::new();
@@ -174,6 +162,52 @@ impl ApiClient {
             .json()
             .map_err(|e| format!("Réponse invalide: {}", e))
     }
+
+        pub fn send_event_sync(
+            &self,
+            user_id: &str,
+            event_type: &str,
+            payload: serde_json::Value,
+            token: &str,
+        ) -> Result<serde_json::Value, String> {
+            let client = reqwest::blocking::Client::new();
+            let url  = format!("{}/events", self.notif_url);
+            let body = serde_json::json!({
+                "user_id":    user_id,
+                "event_type": event_type,
+                "payload":    payload,
+            });
+            let resp = client.post(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&body)
+                .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+            let status = resp.status();
+            if status.is_success() {
+                resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+            } else {
+                Err(format!("Erreur event ({})", status))
+            }
+        }
+
+        pub fn clear_read_notifications_sync(&self, user_id: &str, token: &str) -> Result<serde_json::Value, String> {
+            let client = reqwest::blocking::Client::new();
+            let url = format!("{}/notifications/{}/clear-read", self.notif_url, user_id);
+            let resp = client.delete(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send().map_err(|e| format!("Erreur réseau notif: {}", e))?;
+            let status = resp.status();
+            if status.is_success() {
+                resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+            } else {
+                Err(format!("Erreur clear read ({})", status))
+            }
+        }
+
+        pub fn parse_notifications(&self, notifications: serde_json::Value) -> Result<Vec<Notification>, String> {
+            // Implement parsing logic here
+            // This is a placeholder for the actual implementation
+            Ok(vec![]) // Replace with actual parsed notifications
+        }
 
     // ─── BILLING ───────────────────────────────────────────────────────────────
 

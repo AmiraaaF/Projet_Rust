@@ -244,8 +244,10 @@ impl AppState {
                 let confirmed = response.get("plan").and_then(|v| v.as_str()).unwrap_or(plan_name);
                 self.billing_state.current_plan  = Plan::from_str(confirmed);
                 self.billing_state.invoices_loaded = false;
-                // Trigger notification
-                self.send_event_sync("plan_upgraded", serde_json::json!({"plan": confirmed}));
+                // Trigger notification (via ApiClient)
+                if let Some(user) = &self.current_user {
+                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "plan_upgraded", serde_json::json!({"plan": confirmed}), self.token.as_deref().unwrap_or("") );
+                }
                 Ok(confirmed.to_string())
             }
             Err(e) => Err(e),
@@ -259,8 +261,9 @@ impl AppState {
         match self.api_client.cancel_subscription_sync(&user_id, &token) {
             Ok(_) => {
                 self.load_subscription_for_user_sync(&user_id);
-                // Trigger notification
-                self.send_event_sync("plan_cancelled", serde_json::json!({}));
+                if let Some(user) = &self.current_user {
+                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "plan_cancelled", serde_json::json!({}), self.token.as_deref().unwrap_or("") );
+                }
                 Ok(())
             }
             Err(e) => Err(e),
@@ -503,4 +506,37 @@ fn parse_invoices_from_response(response: &serde_json::Value) -> Vec<BillingInvo
             status,
         })
     }).collect()
+}
+
+fn parse_notifications_value(resp: &serde_json::Value) -> Vec<crate::screens::screenNotifications::Notification> {
+    let data = resp.get("data").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    data.iter().filter_map(|item| {
+        let id = item.get("id")?.as_str()?.to_string();
+        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let message = item.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let notif_type = item.get("notification_type").and_then(|v| v.as_str()).unwrap_or("inapp");
+        let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("sent");
+        let created_at = item.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        Some(crate::screens::screenNotifications::Notification {
+            id,
+            title,
+            message,
+            notif_type: crate::screens::screenNotifications::NotifType::from_str(notif_type),
+            status: crate::screens::screenNotifications::NotifStatus::from_str(status),
+            created_at,
+        })
+    }).collect()
+}
+
+// Backwards-compatible wrapper used by existing call sites
+fn parse_notifications(resp: &serde_json::Value) -> Vec<crate::screens::screenNotifications::Notification> {
+    parse_notifications_value(resp)
+}
+
+impl AppState {
+    pub fn clear_read_notifications_sync(&mut self) {
+        self.notif_state.notifications.retain(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read);
+        self.notif_state.unread_count = self.notif_state.notifications.iter().filter(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read).count() as u64;
+    }
 }

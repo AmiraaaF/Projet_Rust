@@ -1,5 +1,6 @@
 use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke};
 use crate::state::{AppState, Screen};
+use crate::screens::screenDashboard::{sidebar_item, sidebar_item_with_badge};
 use uuid;
 use chrono;
 
@@ -554,10 +555,4 @@ fn draw_task_card(ui: &mut egui::Ui, task: &shared::models::Task, state: &AppSta
             });
         });
 }
-fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: egui::Color32, primary: egui::Color32) -> bool {
-    let color = if active { primary } else { fg };
-    let btn = egui::Button::new(RichText::new(label).color(color).size(14.0))
-        .fill(egui::Color32::TRANSPARENT)
-        .min_size(egui::vec2(156.0, 32.0));
-    ui.add(btn).clicked()
-}
+// sidebar helpers are provided by `screenDashboard` and imported at the top of this file.
