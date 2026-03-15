@@ -79,11 +79,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/tasks/:id", patch(proxy_to_project_service))
         .route("/tasks/:id", delete(proxy_to_project_service))
         // Billing routes -> billing-service
+        .route("/billing/subscriptions", post(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", get(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", patch(proxy_to_billing_service))
-        .route("/billing/subscriptions/:user_id", post(proxy_to_billing_service))
-        .route("/billing/subscriptions/:user_id", delete(proxy_to_billing_service))
-            .route("/billing/invoices/:user_id", get(proxy_to_billing_service))
+        .route("/billing/subscriptions/:user_id/cancel", post(proxy_to_billing_service))
+        .route("/billing/invoices/:user_id", get(proxy_to_billing_service))
         // Notification routes -> notification-service
         .route("/notifications/:user_id",          get(proxy_to_notification_service))
         .route("/notifications/:user_id/stats",    get(proxy_to_notification_service))

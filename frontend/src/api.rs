@@ -87,7 +87,12 @@ impl ApiClient {
         if resp.status().is_success() {
             resp.json::<Project>().map_err(|e| format!("Erreur parsing: {}", e))
         } else {
-            Err(format!("Erreur API: {}", resp.status()))
+            let status = resp.status();
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|v| v.get("error").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur API: {}", status)))
         }
     }
 

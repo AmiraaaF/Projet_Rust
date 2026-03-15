@@ -9,6 +9,8 @@ use state::{AppState, Screen};
 use themes::DarkTheme;
 
 fn main() -> Result<(), eframe::Error> {
+    std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+    std::env::set_var("WAYLAND_DISPLAY", "");
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Mini-SaaS Dashboard",

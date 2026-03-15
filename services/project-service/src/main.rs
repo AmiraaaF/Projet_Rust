@@ -18,6 +18,7 @@ use handlers::{project, task};
 pub struct AppState {
     pub db: PgPool,
     pub auth: Arc<AuthService>,
+    pub http_client: reqwest::Client,
 }
 
 #[tokio::main]
@@ -43,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Failed to initialize database pool");
 
     let auth = Arc::new(AuthService::new(jwt_secret, jwt_expiration));
-    let state = AppState { db, auth };
+    let http_client = reqwest::Client::new();
+    let state = AppState { db, auth, http_client };
 
     let router = Router::new()
         .route("/health", get(health_check))

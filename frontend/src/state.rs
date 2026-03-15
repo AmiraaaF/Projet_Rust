@@ -1,7 +1,7 @@
 use shared::models::{Project, Task, UserPublic};
 use crate::themes::DarkTheme;
 use crate::screens::screenBilling::{Plan, BillingInvoice, InvoiceStatus};
-use crate::screens::screenNotifications::{Notification, NotifType, NotifStatus, FilterTab};
+use crate::screens::screenNotifications::{Notification, NotifStatus, FilterTab};
 use crate::api::ApiClient;
 use uuid;
 
@@ -181,8 +181,7 @@ impl AppState {
         self.error_message   = None;
         self.success_message = None;
         self.clear_forms();
-        // Ne PAS vider les projets - ils resteront en cache local
-        // self.projects.clear(); // ← Commenté
+        // self.projects.clear(); 
         self.current_project = None;
         self.current_tasks.clear();
         self.billing_state = BillingState::default();
@@ -244,9 +243,9 @@ impl AppState {
                 let confirmed = response.get("plan").and_then(|v| v.as_str()).unwrap_or(plan_name);
                 self.billing_state.current_plan  = Plan::from_str(confirmed);
                 self.billing_state.invoices_loaded = false;
-                // Trigger notification (via ApiClient)
-                if let Some(user) = &self.current_user {
-                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "plan_upgraded", serde_json::json!({"plan": confirmed}), self.token.as_deref().unwrap_or("") );
+                // Trigger notification
+                if let Some(token) = &self.token {
+                    self.api_client.send_event_sync(&user_id, "plan_upgraded", serde_json::json!({"plan": confirmed}), token).ok();
                 }
                 Ok(confirmed.to_string())
             }
@@ -261,8 +260,9 @@ impl AppState {
         match self.api_client.cancel_subscription_sync(&user_id, &token) {
             Ok(_) => {
                 self.load_subscription_for_user_sync(&user_id);
-                if let Some(user) = &self.current_user {
-                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "plan_cancelled", serde_json::json!({}), self.token.as_deref().unwrap_or("") );
+                // Trigger notification
+                if let Some(token) = &self.token {
+                    self.api_client.send_event_sync(&user_id, "plan_cancelled", serde_json::json!({}), token).ok();
                 }
                 Ok(())
             }
@@ -394,6 +394,24 @@ impl AppState {
         }
     }
 
+    pub fn clear_read_notifications_sync(&mut self) {
+        let user_id = match &self.current_user { Some(u) => u.id.to_string(), None => return };
+        let token   = match &self.token        { Some(t) => t.clone(),        None => return };
+
+        match self.api_client.clear_read_sync(&user_id, &token) {
+            Ok(_) => {
+                self.notif_state.notifications.retain(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read);
+                self.notif_state.unread_count = self.notif_state.notifications.iter().filter(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read).count() as u64;
+                self.notif_state.toast_message = Some("✅ Read notifications cleared".to_string());
+                self.notif_state.toast_time = std::time::Instant::now();
+            }
+            Err(e) => {
+                self.notif_state.toast_message = Some(format!("⚠ {}", e));
+                self.notif_state.toast_time = std::time::Instant::now();
+            }
+        }
+    }
+
     // ─── PROJECT METHODS ───────────────────────────────────────────────────────
 
     pub fn create_project_sync(&mut self, name: &str, description: Option<&str>) -> Result<(), String> {
@@ -406,6 +424,10 @@ impl AppState {
             Ok(project) => {
                 self.projects.push(project.clone());
                 eprintln!("✅ Project created: {}", project.name);
+                // Trigger notification
+                if let Some(user) = &self.current_user {
+                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "project_created", serde_json::json!({"name": name}), self.token.as_deref().unwrap_or(""));
+                }
                 Ok(())
             }
             Err(e) => {
@@ -427,6 +449,10 @@ impl AppState {
             Ok(task) => {
                 self.current_tasks.push(task.clone());
                 eprintln!("✅ Task created: {}", task.title);
+                // Trigger notification
+                if let Some(user) = &self.current_user {
+                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "task_assigned", serde_json::json!({"title": title, "project": project_id}), self.token.as_deref().unwrap_or(""));
+                }
                 Ok(())
             }
             Err(e) => {
@@ -534,9 +560,3 @@ fn parse_notifications(resp: &serde_json::Value) -> Vec<crate::screens::screenNo
     parse_notifications_value(resp)
 }
 
-impl AppState {
-    pub fn clear_read_notifications_sync(&mut self) {
-        self.notif_state.notifications.retain(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read);
-        self.notif_state.unread_count = self.notif_state.notifications.iter().filter(|n| n.status != crate::screens::screenNotifications::NotifStatus::Read).count() as u64;
-    }
-}

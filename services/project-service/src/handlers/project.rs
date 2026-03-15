@@ -72,6 +72,43 @@ pub async fn create_project(
 ) -> Result<(StatusCode, Json<Project>), (StatusCode, Json<serde_json::Value>)> {
     let user_id = extract_user_id_from_token(&headers, &state)?;
 
+    // Check project quota
+    let billing_service_url = std::env::var("BILLING_SERVICE_URL")
+        .unwrap_or_else(|_| "http://billing-service:3003".to_string());
+        
+    let quota_resp = state.http_client
+        .get(&format!("{}/billing/quota/{}", billing_service_url, user_id))
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to contact billing service: {}", e)})),
+            )
+        })?;
+        
+    let quota_data: serde_json::Value = quota_resp.json().await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to parse billing response"})),
+        )
+    })?;
+    
+    let max_projects = quota_data["quotas"]["max_projects"].as_i64().unwrap_or(3);
+    
+    let current_project_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM projects WHERE owner_id = $1")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or((0,));
+        
+    if max_projects != -1 && current_project_count.0 >= max_projects {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": format!("Project limit reached. Upgrade your plan to create more than {} projects.", max_projects)})),
+        ));
+    }
+
     let project = sqlx::query_as::<_, Project>(
         r#"
         INSERT INTO projects (id, owner_id, name, description, status, created_at, updated_at)
@@ -91,6 +128,18 @@ pub async fn create_project(
             Json(json!({"error": format!("Failed to create project: {}", e)})),
         )
     })?;
+
+    // Send notification
+    let _ = state.http_client
+        .post("http://notification-service:3004/notifications")
+        .json(&json!({
+            "user_id": user_id,
+            "title": format!("Project created: {}", payload.name),
+            "message": format!("You created a new project '{}'", payload.name),
+            "notification_type": "in_app"
+        }))
+        .send()
+        .await;
 
     Ok((StatusCode::CREATED, Json(project)))
 }

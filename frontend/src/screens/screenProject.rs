@@ -113,7 +113,7 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
                     }
                     if let Some(success) = &state.success_message.clone() {
                         ui.add_space(8.0);
-                        ui.label(RichText::new(format!("✓ {}", success)).color(chart_2).size(12.0));
+                        ui.label(RichText::new(format!("✅ {}", success)).color(chart_2).size(12.0));
                     }
 
                     if create_clicked {
@@ -248,6 +248,10 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(4.0);
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
+            }
+            ui.add_space(4.0);
+            if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
+                state.go_to(Screen::Notifications);
             }
         });
 
@@ -427,7 +431,7 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
                                                         h.with_layout(egui::Layout::right_to_left(egui::Align::Center), |h| {
                                                             // contrôles rapides pour déplacer sans drag
                                                             if task.status != "Done" {
-                                                                if h.small_button("→ Done").clicked() {
+                                                                if h.small_button("➡️ Done").clicked() {
                                                                     if let Some(pos) = state.current_tasks.iter().position(|t| t.id == task.id) {
                                                                         state.current_tasks[pos].status = "Done".to_string();
                                                                         state.current_tasks[pos].updated_at = chrono::Utc::now();
@@ -435,7 +439,7 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
                                                                 }
                                                             }
                                                             if task.status == "Todo" {
-                                                                if h.small_button("→ In Progress").clicked() {
+                                                                if h.small_button("➡️ In Progress").clicked() {
                                                                     if let Some(pos) = state.current_tasks.iter().position(|t| t.id == task.id) {
                                                                         state.current_tasks[pos].status = "InProgress".to_string();
                                                                         state.current_tasks[pos].updated_at = chrono::Utc::now();
