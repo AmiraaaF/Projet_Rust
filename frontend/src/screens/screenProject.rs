@@ -181,7 +181,7 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
                                         // Set current project and preload its tasks before navigating
                                         state.current_project = Some(project.clone());
                                         // load tasks for the selected project (synchronous blocking call)
-                                        state.load_tasks_sync(&project.id.to_string());
+                                        state.load_tasks_sync(Some(&project.id.to_string()));
                                         state.go_to(Screen::ProjectDetail);
                                     }
                                 });
@@ -312,25 +312,29 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
                                     if state.new_task_title_input.trim().is_empty() {
                                         state.error_message = Some("Please enter a task title".to_string());
                                     } else {
-                                        // Créer la tâche et l'ajouter en Todo
-                                        let new_task = shared::models::Task {
-                                            id: uuid::Uuid::new_v4(),
-                                            project_id: project.id, // project_id n'est pas optionnel
-                                            title: state.new_task_title_input.clone(),
-                                            description: if state.new_task_description_input.is_empty() { None } else { Some(state.new_task_description_input.clone()) },
-                                            status: "Todo".to_string(),
-                                            priority: "low".to_string(),
-                                            assignee_id: None,
-                                            deadline: None,
-                                            created_at: chrono::Utc::now(),
-                                            updated_at: chrono::Utc::now(),
-                                        };
-                                        state.current_tasks.push(new_task);
-                                        state.new_task_title_input.clear();
-                                        state.new_task_description_input.clear();
-                                        state.show_add_task_form = false;
-                                        state.success_message = Some("Task created and added to Todo".to_string());
-                                        state.error_message = None;
+                                        // Créer la tâche via l'API du tasks-service
+                                        if let Some(project) = &state.current_project.clone() {
+                                            let title = state.new_task_title_input.clone();
+                                            let description = if state.new_task_description_input.is_empty() {
+                                                None
+                                            } else {
+                                                Some(state.new_task_description_input.clone())
+                                            };
+                                            
+                                            match state.create_task_sync(&project.id.to_string(), &title, description.as_deref()) {
+                                                Ok(()) => {
+                                                    state.new_task_title_input.clear();
+                                                    state.new_task_description_input.clear();
+                                                    state.show_add_task_form = false;
+                                                    state.success_message = Some("Task created successfully!".to_string());
+                                                    state.error_message = None;
+                                                }
+                                                Err(err) => {
+                                                    state.error_message = Some(format!("Failed to create task: {}", err));
+                                                    state.success_message = None;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 if ui.add(

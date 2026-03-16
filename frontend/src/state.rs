@@ -99,7 +99,6 @@ pub struct AppState {
     pub name_input: String,
     pub project_name_input: String,
     pub project_description_input: String,
-    pub task_title_input: String,
     // Champs pour la gestion des tâches
     pub new_task_title_input: String,
     pub new_task_description_input: String,
@@ -470,83 +469,19 @@ impl AppState {
         }
     }
 
-    // // ─── TASK METHODS ──────────────────────────────────────────────────────────
+    // ─── TASKS METHODS ──────────────────────────────────────────────────────
 
-    // pub fn create_task_sync(&mut self, project_id: &str, title: &str, description: Option<&str>) -> Result<(), String> {
-    //     let token = match &self.token {
-    //         Some(t) => t.clone(),
-    //         None => return Err("Non connecté".to_string()),
-    //     };
-
-    //     match self.api_client.create_task_sync(project_id, title, description, &token) {
-    //         Ok(task) => {
-    //             self.current_tasks.push(task.clone());
-    //             eprintln!("✅ Task created: {}", task.title);
-    //             // Trigger notification
-    //             if let Some(user) = &self.current_user {
-    //                 let _ = self.api_client.send_event_sync(&user.id.to_string(), "task_assigned", serde_json::json!({"title": title, "project": project_id}), self.token.as_deref().unwrap_or(""));
-    //             }
-    //             Ok(())
-    //         }
-    //         Err(e) => {
-    //             eprintln!("❌ Failed to create task: {}", e);
-    //             Err(e)
-    //         }
-    //     }
-    // }
-
-    // pub fn load_tasks_sync(&mut self, project_id: &str) {
-    //     let token = match &self.token {
-    //         Some(t) => t.clone(),
-    //         None => return,
-    //     };
-
-    //     match self.api_client.get_tasks_sync(project_id, 1, 100, &token) {
-    //         Ok(response) => {
-    //             self.current_tasks = response.data;
-    //             eprintln!("✅ Loaded {} tasks", self.current_tasks.len());
-    //         }
-    //         Err(e) => {
-    //             eprintln!("⚠️ Failed to load tasks: {}", e);
-    //         }
-    //     }
-    // }
-
-    // pub fn update_task_status_sync(&mut self, project_id: &str, task_id: &str, status: &str) -> Result<(), String> {
-    //     let token = match &self.token {
-    //         Some(t) => t.clone(),
-    //         None => return Err("Non connecté".to_string()),
-    //     };
-
-    //     match self.api_client.update_task_status_sync(project_id, task_id, status, &token) {
-    //         Ok(updated_task) => {
-    //             if let Some(task) = self.current_tasks.iter_mut().find(|t| t.id.to_string() == task_id) {
-    //                 task.status = updated_task.status.clone();
-    //             }
-    //             eprintln!("✅ Task status updated: {}", status);
-    //             Ok(())
-    //         }
-    //         Err(e) => {
-    //             eprintln!("❌ Failed to update task status: {}", e);
-    //             Err(e)
-    //         }
-    //     }
-    // }
-
-     // ─── TASKS METHODS ──────────────────────────────────────────────────────
-
-    // Charge toutes les tâches de l'utilisateur connecté
-    pub fn load_tasks_sync(&mut self) {
+    // Charge les tâches: soit d'un projet spécifique, soit de l'utilisateur connecté
+    pub fn load_tasks_sync(&mut self, project_id: Option<&str>) {
         use uuid::Uuid;
         use chrono::DateTime;
-        if self.tasks_loaded { return; }
-
+        
         let token = match &self.token {
             Some(t) => t.clone(),
             None => return,
         };
 
-        match self.api_client.list_tasks_sync(None, None, None, &token) {
+        match self.api_client.list_tasks_sync(None, None, project_id, &token) {
             Ok(responses) => {
                 self.current_tasks = responses
                     .into_iter()
@@ -583,7 +518,59 @@ impl AppState {
         }
     }
 
+    pub fn create_task_sync(&mut self, project_id: &str, title: &str, description: Option<&str>) -> Result<(), String> {
+        use uuid::Uuid;
+        use chrono::DateTime;
 
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Non connecté".to_string()),
+        };
+
+        match self.api_client.create_task_sync(project_id, title, description, &token) {
+            Ok(response) => {
+                let id = Uuid::parse_str(&response.id)
+                    .map_err(|_| "Invalid task ID from response".to_string())?;
+                let proj_id = Uuid::parse_str(&response.project_id)
+                    .map_err(|_| "Invalid project ID from response".to_string())?;
+                let assignee_id = response.assignee_id
+                    .as_deref()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+                let deadline = response.deadline
+                    .as_deref()
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|d| d.with_timezone(&chrono::Utc));
+                let created_at = DateTime::parse_from_rfc3339(&response.created_at)
+                    .map_err(|_| "Invalid created_at timestamp".to_string())?
+                    .with_timezone(&chrono::Utc);
+                let updated_at = DateTime::parse_from_rfc3339(&response.updated_at)
+                    .map_err(|_| "Invalid updated_at timestamp".to_string())?
+                    .with_timezone(&chrono::Utc);
+
+                let task = Task {
+                    id,
+                    project_id: proj_id,
+                    assignee_id,
+                    title: response.title,
+                    description: response.description,
+                    status: response.status,
+                    priority: response.priority,
+                    deadline,
+                    created_at,
+                    updated_at,
+                    assignee_name: response.assignee_name,
+                    project_name: response.project_name,
+                };
+                self.current_tasks.push(task);
+                eprintln!("✅ Task created successfully");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to create task: {}", e);
+                Err(e)
+            }
+        }
+    }
 
 }
 

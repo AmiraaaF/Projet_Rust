@@ -3,7 +3,7 @@ use crate::state::{AppState, Screen};
 use shared::models::Task;
 
 pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
-    state.load_tasks_sync();
+    state.load_tasks_sync(None);
 
     // ── Couleurs depuis le thème ─────────────────────────────────────────────
     let bg             = state.theme.background;

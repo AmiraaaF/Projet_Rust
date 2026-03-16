@@ -49,6 +49,7 @@ pub struct CreateTaskRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct TaskFilters {
+    pub project_id: Option<Uuid>,
     pub assignee_id: Option<Uuid>,
     pub status: Option<String>,
 }

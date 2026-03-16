@@ -76,8 +76,42 @@ pub async fn list_tasks(State(state): State<AppState>, Query(filters): Query<Tas
         )),
     };
 
-    // 2. Récupérer les tâches des projets où l'utilisateur connecté est membre.
-    //    soit il est propriétaire soit il est membre 
+    // Cas 1: Si project_id est fourni, retourner les tâches de ce projet spécifique
+    if let Some(project_id) = filters.project_id {
+        return match sqlx::query(
+            r#"
+            SELECT t.id, t.project_id, t.assignee_id, t.title, t.description,
+                   CAST(t.status AS TEXT), CAST(t.priority AS TEXT),
+                   t.deadline, t.created_at, t.updated_at,
+                   u.name AS assignee_name, p.name AS project_name
+            FROM tasks t
+            LEFT JOIN users u ON t.assignee_id = u.id
+            LEFT JOIN projects p ON t.project_id = p.id
+            WHERE t.project_id = $1
+              AND ($2::uuid IS NULL OR t.assignee_id = $2)
+              AND ($3::text IS NULL OR CAST(t.status AS TEXT) = $3)
+            ORDER BY t.created_at DESC
+            "#,
+        )
+        .bind(project_id)
+        .bind(filters.assignee_id)
+        .bind(filters.status.as_deref())
+        .fetch_all(&state.db)
+        .await
+        {
+            Ok(rows) => {
+                let data: Vec<Value> = rows.iter().map(|r| task_row_to_json(r)).collect();
+                Ok(Json(json!(data)))
+            }
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )),
+        };
+    }
+
+    // Cas 2: Récupérer les tâches des projets où l'utilisateur connecté est membre.
+    //        soit il est propriétaire soit il est membre 
     match sqlx::query(
         r#"
         SELECT t.id, t.project_id, t.assignee_id, t.title, t.description,
@@ -259,6 +293,7 @@ pub async fn mark_task_done(
         )),
     }
 }
+
 //seul le proprietaire du projet peut supprimie les taches de ce projet si pas proprio il peut pas 
 pub async fn delete_task(
     State(state): State<AppState>,

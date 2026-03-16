@@ -157,21 +157,34 @@ impl ApiClient {
             .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
-    pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<PaginatedResponse<Task>, String> {
+    pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<Vec<TaskResponse>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/projects/{}/tasks?page={}&limit={}", self.base_url, project_id, page, limit);
-        client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json().map_err(|e| format!("Réponse invalide: {}", e))
+        let url = format!("{}/tasks?project_id={}&page={}&limit={}", self.tasks_url, project_id, page, limit);
+        let resp = client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<Vec<TaskResponse>>()
+                .map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur ({}): {}", status, text))
+        }
     }
 
-    pub fn create_task_sync(&self, project_id: &str, title: &str, description: Option<&str>, token: &str) -> Result<Task, String> {
-        let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/projects/{}/tasks", self.base_url, project_id);
-        let body = serde_json::json!({ "title": title, "description": description });
-        client.post(&url).header("Authorization", format!("Bearer {}", token)).json(&body).send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json().map_err(|e| format!("Réponse invalide: {}", e))
+    pub fn create_task_sync(&self, project_id: &str, title: &str, description: Option<&str>, token: &str) -> Result<TaskResponse, String> {
+        // Wrapper qui utilise create_task_on_service_sync avec les paramètres par défaut
+        self.create_task_on_service_sync(
+            title,
+            description,
+            "todo",           // status par défaut
+            "medium",         // priority par défaut
+            None,             // pas d'assignee par défaut
+            None,             // pas de deadline
+            Some(project_id), // toujours passer le project_id
+            token,
+        )
     }
 
     
@@ -422,10 +435,13 @@ impl ApiClient {
 
     // ─── TASKS ──────────────────────────────────────────────────────────────
 
-    pub fn list_tasks_sync( &self, assignee_id: Option<&str>, status: Option<&str>,  project_id: Option<&str>, token: &str,) -> Result<Vec<TaskResponse>, String> {
+    pub fn list_tasks_sync(&self, assignee_id: Option<&str>, status: Option<&str>, project_id: Option<&str>, token: &str) -> Result<Vec<TaskResponse>, String> {
         let client = reqwest::blocking::Client::new();
 
         let mut params: Vec<String> = Vec::new();
+        if let Some(id) = project_id {
+            params.push(format!("project_id={}", id));
+        }
         if let Some(id) = assignee_id {
             params.push(format!("assignee_id={}", id));
         }
