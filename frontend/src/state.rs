@@ -14,6 +14,7 @@ pub enum Screen {
     ProjectDetail,
     Billing,
     Notifications,
+    Tasks,  
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,6 +105,17 @@ pub struct AppState {
     pub new_task_description_input: String,
     pub show_add_task_form: bool,
     pub dragging_task_id: Option<uuid::Uuid>,
+
+    //tasks
+    pub task_title_input: String,
+    pub task_description_input: String,
+    pub task_priority_input: String,   
+    pub task_status_input: String,     
+    pub task_assignee_input: String,    
+    pub task_deadline_input: String,    
+    pub task_project_id_input: String,  
+    pub show_task_form: bool,          
+    pub tasks_loaded: bool, 
     // Données
     pub projects: Vec<Project>,
     pub current_project: Option<Project>,
@@ -135,12 +147,22 @@ impl AppState {
             name_input:                String::new(),
             project_name_input:        String::new(),
             project_description_input: String::new(),
-            task_title_input: String::new(),
             // Nouveaux champs pour les tâches
             new_task_title_input: String::new(),
             new_task_description_input: String::new(),
             show_add_task_form: false,
             dragging_task_id: None,
+
+            //tasks 
+            task_title_input: String::new(),
+            task_description_input: String::new(),
+            task_priority_input: "medium".to_string(),
+            task_status_input: "todo".to_string(),
+            task_assignee_input: String::new(),
+            task_deadline_input: String::new(),
+            task_project_id_input: String::new(),
+            show_task_form: false,
+            tasks_loaded: false,
             // Données
             projects: Vec::new(),
             current_project: None,
@@ -173,6 +195,16 @@ impl AppState {
         self.new_task_description_input.clear();
         self.show_add_task_form = false;
         self.dragging_task_id = None;
+
+        //tasks 
+        self.task_description_input.clear();
+        self.task_priority_input = "medium".to_string();
+        self.task_status_input   = "todo".to_string();
+        self.task_assignee_input.clear();
+        self.task_deadline_input.clear();
+        self.task_project_id_input.clear();
+        self.show_task_form = false;
+        self.tasks_loaded = false;
     }
 
     pub fn logout(&mut self) {
@@ -184,6 +216,7 @@ impl AppState {
         // self.projects.clear(); 
         self.current_project = None;
         self.current_tasks.clear();
+    
         self.billing_state = BillingState::default();
         self.notif_state   = NotificationState::default();
         self.current_screen = Screen::Login;
@@ -437,68 +470,121 @@ impl AppState {
         }
     }
 
-    // ─── TASK METHODS ──────────────────────────────────────────────────────────
+    // // ─── TASK METHODS ──────────────────────────────────────────────────────────
 
-    pub fn create_task_sync(&mut self, project_id: &str, title: &str, description: Option<&str>) -> Result<(), String> {
-        let token = match &self.token {
-            Some(t) => t.clone(),
-            None => return Err("Non connecté".to_string()),
-        };
+    // pub fn create_task_sync(&mut self, project_id: &str, title: &str, description: Option<&str>) -> Result<(), String> {
+    //     let token = match &self.token {
+    //         Some(t) => t.clone(),
+    //         None => return Err("Non connecté".to_string()),
+    //     };
 
-        match self.api_client.create_task_sync(project_id, title, description, &token) {
-            Ok(task) => {
-                self.current_tasks.push(task.clone());
-                eprintln!("✅ Task created: {}", task.title);
-                // Trigger notification
-                if let Some(user) = &self.current_user {
-                    let _ = self.api_client.send_event_sync(&user.id.to_string(), "task_assigned", serde_json::json!({"title": title, "project": project_id}), self.token.as_deref().unwrap_or(""));
-                }
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("❌ Failed to create task: {}", e);
-                Err(e)
-            }
-        }
-    }
+    //     match self.api_client.create_task_sync(project_id, title, description, &token) {
+    //         Ok(task) => {
+    //             self.current_tasks.push(task.clone());
+    //             eprintln!("✅ Task created: {}", task.title);
+    //             // Trigger notification
+    //             if let Some(user) = &self.current_user {
+    //                 let _ = self.api_client.send_event_sync(&user.id.to_string(), "task_assigned", serde_json::json!({"title": title, "project": project_id}), self.token.as_deref().unwrap_or(""));
+    //             }
+    //             Ok(())
+    //         }
+    //         Err(e) => {
+    //             eprintln!("❌ Failed to create task: {}", e);
+    //             Err(e)
+    //         }
+    //     }
+    // }
 
-    pub fn load_tasks_sync(&mut self, project_id: &str) {
+    // pub fn load_tasks_sync(&mut self, project_id: &str) {
+    //     let token = match &self.token {
+    //         Some(t) => t.clone(),
+    //         None => return,
+    //     };
+
+    //     match self.api_client.get_tasks_sync(project_id, 1, 100, &token) {
+    //         Ok(response) => {
+    //             self.current_tasks = response.data;
+    //             eprintln!("✅ Loaded {} tasks", self.current_tasks.len());
+    //         }
+    //         Err(e) => {
+    //             eprintln!("⚠️ Failed to load tasks: {}", e);
+    //         }
+    //     }
+    // }
+
+    // pub fn update_task_status_sync(&mut self, project_id: &str, task_id: &str, status: &str) -> Result<(), String> {
+    //     let token = match &self.token {
+    //         Some(t) => t.clone(),
+    //         None => return Err("Non connecté".to_string()),
+    //     };
+
+    //     match self.api_client.update_task_status_sync(project_id, task_id, status, &token) {
+    //         Ok(updated_task) => {
+    //             if let Some(task) = self.current_tasks.iter_mut().find(|t| t.id.to_string() == task_id) {
+    //                 task.status = updated_task.status.clone();
+    //             }
+    //             eprintln!("✅ Task status updated: {}", status);
+    //             Ok(())
+    //         }
+    //         Err(e) => {
+    //             eprintln!("❌ Failed to update task status: {}", e);
+    //             Err(e)
+    //         }
+    //     }
+    // }
+
+     // ─── TASKS METHODS ──────────────────────────────────────────────────────
+
+    // Charge toutes les tâches de l'utilisateur connecté
+    pub fn load_tasks_sync(&mut self) {
+        use uuid::Uuid;
+        use chrono::DateTime;
+        if self.tasks_loaded { return; }
+
         let token = match &self.token {
             Some(t) => t.clone(),
             None => return,
         };
 
-        match self.api_client.get_tasks_sync(project_id, 1, 100, &token) {
-            Ok(response) => {
-                self.current_tasks = response.data;
-                eprintln!("✅ Loaded {} tasks", self.current_tasks.len());
+        match self.api_client.list_tasks_sync(None, None, None, &token) {
+            Ok(responses) => {
+                self.current_tasks = responses
+                    .into_iter()
+                    .filter_map(|r| {
+                        let id         = Uuid::parse_str(&r.id).ok()?;
+                        let project_id = Uuid::parse_str(&r.project_id).ok()?;
+                        let assignee_id = r.assignee_id
+                            .as_deref()
+                            .and_then(|s| Uuid::parse_str(s).ok());
+                        let deadline = r.deadline
+                            .as_deref()
+                            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                            .map(|d| d.with_timezone(&chrono::Utc));
+                        let created_at = DateTime::parse_from_rfc3339(&r.created_at)
+                            .ok()?.with_timezone(&chrono::Utc);
+                        let updated_at = DateTime::parse_from_rfc3339(&r.updated_at)
+                            .ok()?.with_timezone(&chrono::Utc);
+                        Some(Task {
+                            id, project_id, assignee_id,
+                            title: r.title,
+                            description: r.description,
+                            status: r.status,
+                            priority: r.priority,
+                            deadline, created_at, updated_at,
+                            assignee_name: r.assignee_name,
+                            project_name: r.project_name,
+                        })
+                    })
+                    .collect();
+                self.tasks_loaded = true;
+                eprintln!("{} tâche(s) chargée(s)", self.current_tasks.len());
             }
-            Err(e) => {
-                eprintln!("⚠️ Failed to load tasks: {}", e);
-            }
+            Err(e) => eprintln!("Impossible de charger les tâches: {}", e),
         }
     }
 
-    pub fn update_task_status_sync(&mut self, project_id: &str, task_id: &str, status: &str) -> Result<(), String> {
-        let token = match &self.token {
-            Some(t) => t.clone(),
-            None => return Err("Non connecté".to_string()),
-        };
 
-        match self.api_client.update_task_status_sync(project_id, task_id, status, &token) {
-            Ok(updated_task) => {
-                if let Some(task) = self.current_tasks.iter_mut().find(|t| t.id.to_string() == task_id) {
-                    task.status = updated_task.status.clone();
-                }
-                eprintln!("✅ Task status updated: {}", status);
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("❌ Failed to update task status: {}", e);
-                Err(e)
-            }
-        }
-    }
+
 }
 
 

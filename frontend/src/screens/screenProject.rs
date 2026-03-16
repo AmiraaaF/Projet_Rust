@@ -59,6 +59,8 @@ pub fn projects_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(4.0);
             sidebar_item(ui, "📁 Projects", true, fg, primary);
             ui.add_space(4.0);
+            if sidebar_item(ui, "✅ Tasks", false, fg, primary) { state.go_to(Screen::Tasks); }
+            ui.add_space(4.0);
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
             }
@@ -245,6 +247,8 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
                 state.current_project = None;
                 state.go_to(Screen::Projects);
             }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "✅ Tasks", false, fg, primary) { state.go_to(Screen::Tasks); }
             ui.add_space(4.0);
             if sidebar_item(ui, "💳 Billing", false, fg, primary) {
                 state.go_to(Screen::Billing);
