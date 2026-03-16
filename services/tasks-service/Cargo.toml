@@ -1,5 +1,5 @@
 [package]
-name = "taks-service"
+name = "tasks-service"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
