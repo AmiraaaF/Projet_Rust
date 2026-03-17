@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 mod handlers;
 
-use handlers::{project, task};
+use handlers::{project};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -57,11 +57,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:id/members", get(project::get_members))
         .route("/projects/:id/members", post(project::add_member))
         .route("/projects/:id/members/:user_id", delete(project::remove_member))
-        .route("/projects/:id/tasks", post(task::create_task))
-        .route("/projects/:id/tasks", get(task::list_tasks))
-        .route("/tasks/:id", get(task::get_task))
-        .route("/tasks/:id", patch(task::update_task))
-        .route("/tasks/:id", delete(task::delete_task))
         .with_state(state)
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(

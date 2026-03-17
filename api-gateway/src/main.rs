@@ -18,6 +18,7 @@ pub struct AppState {
     pub billing_service_url: String,
     pub notification_service_url: String,
     pub personal_task_service_url: String,
+    pub tasks_service_url: String,
 }
 
 #[tokio::main]
@@ -45,6 +46,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "http://localhost:3004".to_string());
     let personal_task_service_url = std::env::var("PERSONAL_TASK_SERVICE_URL")
         .unwrap_or_else(|_| "http://localhost:3006".to_string());
+    let tasks_service_url = std::env::var("TASKS_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:3005".to_string());
 
     let auth = Arc::new(AuthService::new(jwt_secret, jwt_expiration));
     let state = AppState {
@@ -54,6 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         billing_service_url,
         notification_service_url,
         personal_task_service_url,
+        tasks_service_url,
     };
 
     let router = Router::new()
@@ -79,12 +83,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:id/tasks", post(proxy_to_project_service))
         .route("/projects/:id/tasks", get(proxy_to_project_service))
         // Personal Task routes -> personal-task-service
-        .route("/tasks/with-deadline", get(proxy_to_personal_task_service))
-        .route("/tasks", post(proxy_to_personal_task_service))
-        .route("/tasks", get(proxy_to_personal_task_service))
-        .route("/tasks/:id", get(proxy_to_personal_task_service))
-        .route("/tasks/:id", patch(proxy_to_personal_task_service))
-        .route("/tasks/:id", delete(proxy_to_personal_task_service))
+        .route("/personal-tasks/with-deadline", get(proxy_to_personal_task_service))
+        .route("/personal-tasks", post(proxy_to_personal_task_service))
+        .route("/personal-tasks", get(proxy_to_personal_task_service))
+        .route("/personal-tasks/:id", get(proxy_to_personal_task_service))
+        .route("/personal-tasks/:id", patch(proxy_to_personal_task_service))
+        .route("/personal-tasks/:id", delete(proxy_to_personal_task_service))
+        // Task routes 
+        .route("/tasks/stats", get(proxy_to_tasks_service))
+        .route("/tasks/:id/done", patch(proxy_to_tasks_service))
+        .route("/tasks/:id", get(proxy_to_tasks_service))
+        .route("/tasks/:id", patch(proxy_to_tasks_service))
+        .route("/tasks/:id", delete(proxy_to_tasks_service))
+        .route("/tasks", post(proxy_to_tasks_service))
+        .route("/tasks", get(proxy_to_tasks_service))
         // Billing routes -> billing-service
         .route("/billing/subscriptions", post(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", get(proxy_to_billing_service))
@@ -155,6 +167,16 @@ async fn check_services(State(state): State<AppState>) -> impl IntoResponse {
         results["project_service"] = json!({"status": "down"});
     }
 
+    if let Ok(resp) = client
+        .get(&format!("{}/health", state.tasks_service_url))
+        .send()
+        .await
+    {
+        results["tasks_service"] = json!({"status": resp.status().to_string()});
+    } else {
+        results["tasks_service"] = json!({"status": "down"});
+    }
+
     (StatusCode::OK, Json(results))
 }
 
@@ -197,6 +219,14 @@ async fn proxy_to_personal_task_service(
     req: Request,
 ) -> Result<Response, StatusCode> {
     proxy_request(&state.personal_task_service_url, headers, req).await
+    
+}
+async fn proxy_to_tasks_service(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    req: Request,
+) -> Result<Response, StatusCode> {
+    proxy_request(&state.tasks_service_url, headers, req).await
 }
 
 async fn proxy_request(

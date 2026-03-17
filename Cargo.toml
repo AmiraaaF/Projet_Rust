@@ -8,6 +8,7 @@ members = [
     "api-gateway",
     "frontend", 
     "services/personal-task-service",
+    "services/tasks-service",
 ]
 resolver = "2"
 

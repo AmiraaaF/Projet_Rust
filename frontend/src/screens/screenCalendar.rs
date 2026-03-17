@@ -7,6 +7,9 @@ const WEEKDAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 pub fn calendar_screen(ctx: &egui::Context, state: &mut AppState) {
     state.poll_notifications_sync();
+    if !state.calendar_loaded {
+        state.load_calendar_tasks_sync();
+    }
     ctx.request_repaint();
 
     let bg             = state.theme.background;
@@ -57,11 +60,13 @@ pub fn calendar_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(4.0);
             if sidebar_item(ui, "📁 Projects",     false, fg, primary) { state.go_to(Screen::Projects); }
             ui.add_space(4.0);
+            if sidebar_item(ui, "✅ Tasks", false, fg, primary) { state.go_to(Screen::Tasks); }
+            ui.add_space(4.0);
             if sidebar_item(ui, "✅ To-Do",        false, fg, primary) { state.go_to(Screen::Todo); }
             ui.add_space(4.0);
             if sidebar_item(ui, "📅 Calendar",     false, fg, primary) { state.go_to(Screen::Calendar); }
             ui.add_space(4.0);
-            if sidebar_item(ui, "💳 Billing",      false, fg, primary) { state.go_to(Screen::Billing); }
+            if sidebar_item(ui, "💳 Billing", false, fg, primary) { state.go_to(Screen::Billing); }
             ui.add_space(4.0);
             if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
                 state.go_to(Screen::Notifications);
@@ -188,7 +193,7 @@ fn month_nav(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (year, month) = (state.calendar_state.year, state.calendar_state.month);
                     let month_str = format!("{:04}-{:02}", year, month);
-                    let month_tasks: Vec<_> = state.todo_state.items.iter()
+                    let month_tasks: Vec<_> = state.calendar_state.tasks.iter()
                         .filter(|i| i.deadline.as_ref().map(|d| d.starts_with(&month_str)).unwrap_or(false))
                         .collect();
                     let done_ct   = month_tasks.iter().filter(|i| i.status == TodoStatus::Done).count();
@@ -323,7 +328,7 @@ fn calendar_grid(
 
                             // Task dots for this day
                             let day_str = format!("{:04}-{:02}-{:02}", year, month, day_num);
-                            let day_tasks: Vec<_> = state.todo_state.items.iter()
+                            let day_tasks: Vec<_> = state.calendar_state.tasks.iter()
                                 .filter(|t| t.deadline.as_deref() == Some(&day_str))
                                 .collect();
 
@@ -436,7 +441,7 @@ fn day_detail_panel(
     let day_str   = format!("{:04}-{:02}-{:02}", year, month, day);
     let today_str = Local::now().format("%Y-%m-%d").to_string();
 
-    let tasks: Vec<_> = state.todo_state.items.iter()
+    let tasks: Vec<_> = state.calendar_state.tasks.iter()
         .filter(|t| t.deadline.as_deref() == Some(&day_str))
         .collect();
 
@@ -542,7 +547,7 @@ fn upcoming_panel(
     let today_str = Local::now().format("%Y-%m-%d").to_string();
 
     // Gather upcoming tasks (next 14 days, not done)
-    let mut upcoming: Vec<_> = state.todo_state.items.iter()
+    let mut upcoming: Vec<_> = state.calendar_state.tasks.iter()
         .filter(|t| {
             t.status != TodoStatus::Done &&
             t.deadline.as_ref().map(|d| d.as_str() >= today_str.as_str()).unwrap_or(false)
@@ -551,7 +556,7 @@ fn upcoming_panel(
     upcoming.sort_by(|a, b| a.deadline.cmp(&b.deadline));
     let upcoming = &upcoming[..upcoming.len().min(8)];
 
-    let mut overdue: Vec<_> = state.todo_state.items.iter()
+    let mut overdue: Vec<_> = state.calendar_state.tasks.iter()
         .filter(|t| {
             t.status != TodoStatus::Done &&
             t.deadline.as_ref().map(|d| d.as_str() < today_str.as_str()).unwrap_or(false)

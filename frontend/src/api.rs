@@ -1,6 +1,24 @@
 use shared::models::*;
 use uuid;
 use chrono;
+use serde::Deserialize;
+
+// Représente une tâche telle que renvoyée par le tasks-service
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskResponse {
+    pub id: String,
+    pub project_id: String,
+    pub assignee_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,  
+    pub status: String,               
+    pub priority: String,             
+    pub deadline: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub assignee_name: Option<String>,
+    pub project_name: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct ApiClient {
@@ -8,6 +26,7 @@ pub struct ApiClient {
     billing_url:       String,  // billing-service :3003
     notif_url:         String,  // notification-service :3004
     personal_task_url: String,  // personal-task-service :3006
+    tasks_url: String,  
 }
 
 impl ApiClient {
@@ -25,7 +44,14 @@ impl ApiClient {
             .replace(":3003", ":3006")
             .replace(":3004", ":3006")
             .replace(":3005", ":3006");
-        Self { base_url, billing_url, notif_url, personal_task_url }
+        let tasks_url = base_url
+            .replace(":3001", ":3005")
+            .replace(":3002", ":3005")
+            .replace(":3003", ":3005")
+            .replace(":3004", ":3005")
+            .replace(":3006", ":3005");
+        
+        Self { base_url, billing_url, notif_url, personal_task_url, tasks_url }
     }
 
     pub fn notif_url(&self) -> &str { &self.notif_url }
@@ -163,21 +189,50 @@ impl ApiClient {
             .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
-    pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<PaginatedResponse<Task>, String> {
+    pub fn get_project_members_sync(&self, project_id: &str, token: &str) -> Result<Vec<UserPublic>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/projects/{}/tasks?page={}&limit={}", self.base_url, project_id, page, limit);
-        client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json().map_err(|e| format!("Réponse invalide: {}", e))
+        let url = format!("{}/projects/{}/members", self.base_url, project_id);
+        let resp = client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<Vec<UserPublic>>()
+                .map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur ({}): {}", status, text))
+        }
     }
 
-    pub fn create_task_sync(&self, project_id: &str, title: &str, description: Option<&str>, token: &str) -> Result<Task, String> {
+    pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<Vec<TaskResponse>, String> {
         let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/projects/{}/tasks", self.base_url, project_id);
-        let body = serde_json::json!({ "title": title, "description": description });
-        client.post(&url).header("Authorization", format!("Bearer {}", token)).json(&body).send()
-            .map_err(|e| format!("Erreur réseau: {}", e))?
-            .json().map_err(|e| format!("Réponse invalide: {}", e))
+        let url = format!("{}/tasks?project_id={}&page={}&limit={}", self.tasks_url, project_id, page, limit);
+        let resp = client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<Vec<TaskResponse>>()
+                .map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur ({}): {}", status, text))
+        }
+    }
+
+    pub fn create_task_sync(&self, project_id: &str, title: &str, description: Option<&str>, token: &str) -> Result<TaskResponse, String> {
+        // Wrapper qui utilise create_task_on_service_sync avec les paramètres par défaut
+        self.create_task_on_service_sync(
+            title,
+            description,
+            "todo",           // status par défaut
+            "medium",         // priority par défaut
+            None,             // pas d'assignee par défaut
+            None,             // pas de deadline
+            Some(project_id), // toujours passer le project_id
+            token,
+        )
     }
 
     
@@ -237,9 +292,7 @@ impl ApiClient {
         }
 
         pub fn parse_notifications(&self, notifications: serde_json::Value) -> Result<Vec<Notification>, String> {
-            // Implement parsing logic here
-            // This is a placeholder for the actual implementation
-            Ok(vec![]) // Replace with actual parsed notifications
+            Ok(vec![]) 
         }
 
     // ─── BILLING ───────────────────────────────────────────────────────────────
@@ -493,7 +546,7 @@ impl ApiClient {
         token: &str,
     ) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/tasks", self.personal_task_url);
+        let url  = format!("{}/personal-tasks", self.personal_task_url);
         
         let deadline_dt = deadline.and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d).ok()
@@ -525,7 +578,7 @@ impl ApiClient {
 
     pub fn list_personal_tasks_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks", self.personal_task_url);
+        let url = format!("{}/personal-tasks", self.personal_task_url);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -535,7 +588,7 @@ impl ApiClient {
 
     pub fn get_personal_task_sync(&self, task_id: &str, token: &str) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/{}", self.personal_task_url, task_id);
+        let url = format!("{}/personal-tasks/{}", self.personal_task_url, task_id);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -554,7 +607,7 @@ impl ApiClient {
         token: &str,
     ) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/tasks/{}", self.personal_task_url, task_id);
+        let url  = format!("{}/personal-tasks/{}", self.personal_task_url, task_id);
 
         let deadline_dt = deadline.and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d).ok()
@@ -587,7 +640,7 @@ impl ApiClient {
 
     pub fn delete_personal_task_sync(&self, task_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/{}", self.personal_task_url, task_id);
+        let url = format!("{}/personal-tasks/{}", self.personal_task_url, task_id);
         client.delete(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -597,11 +650,131 @@ impl ApiClient {
 
     pub fn get_personal_tasks_with_deadline_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/with-deadline", self.personal_task_url);
+        let url = format!("{}/personal-tasks/with-deadline", self.personal_task_url);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
             .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
+    // ─── TASKS ──────────────────────────────────────────────────────────────
+
+    pub fn list_tasks_sync(&self, assignee_id: Option<&str>, status: Option<&str>, project_id: Option<&str>, token: &str) -> Result<Vec<TaskResponse>, String> {
+        let client = reqwest::blocking::Client::new();
+
+        let mut params: Vec<String> = Vec::new();
+        if let Some(id) = project_id {
+            params.push(format!("project_id={}", id));
+        }
+        if let Some(id) = assignee_id {
+            params.push(format!("assignee_id={}", id));
+        }
+        if let Some(s) = status {
+            params.push(format!("status={}", s));
+        }
+        let url = if params.is_empty() {
+            format!("{}/tasks", self.tasks_url)
+        } else {
+            format!("{}/tasks?{}", self.tasks_url, params.join("&"))
+        };
+
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau tasks: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<Vec<TaskResponse>>()
+                .map_err(|e| format!("Réponse tasks invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur tasks ({}): {}", status, text))
+        }
+    }
+
+    // Marque une tâche comme "done" 
+    pub fn mark_task_done_sync(&self, task_id: &str, token: &str) -> Result<(), String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/{}/done", self.tasks_url, task_id);
+
+        let resp = client
+            .patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau tasks: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur mark done ({}): {}", status, text))
+        }
+    }
+
+
+    pub fn delete_task_sync(&self, task_id: &str, token: &str) -> Result<(), String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/{}", self.tasks_url, task_id);
+
+        let resp = client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau tasks: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur delete task ({}): {}", status, text))
+        }
+    }
+
+  
+    pub fn create_task_on_service_sync(
+        &self,
+        title: &str,
+        description: Option<&str>,
+        status: &str,
+        priority: &str,
+        assignee_id: Option<&str>,
+        deadline: Option<&str>,
+        project_id: Option<&str>,
+        token: &str,
+    ) -> Result<TaskResponse, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks", self.tasks_url);
+
+        
+        let body = serde_json::json!({
+            "title":       title,
+            "description": description,
+            "status":      status,
+            "priority":    priority,
+            "assignee_id": assignee_id,
+            "deadline":    deadline,
+            "project_id":  project_id,
+        });
+
+        let resp = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau tasks: {}", e))?;
+
+        let status_code = resp.status();
+        if status_code.is_success() {
+            resp.json::<TaskResponse>()
+                .map_err(|e| format!("Réponse tasks invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur création tâche ({}): {}", status_code, text))
+        }
+    }
+
 }

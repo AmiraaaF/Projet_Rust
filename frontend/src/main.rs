@@ -7,7 +7,7 @@ use eframe::egui;
 use screens::{
     screenAuth, screenDashboard, screenProject,
     screenBilling, screenNotifications,
-    screenProfile, screenTodo, screenCalendar,
+    screenProfile, screenTodo, screenCalendar, screenTasks
 };
 use state::{AppState, Screen};
 use themes::DarkTheme;
@@ -65,6 +65,7 @@ impl eframe::App for MyApp {
             Screen::Profile       => screenProfile::profile_screen(ctx, &mut self.state),
             Screen::Todo          => screenTodo::todo_screen(ctx, &mut self.state),
             Screen::Calendar      => screenCalendar::calendar_screen(ctx, &mut self.state),
+            Screen::Tasks        => screenTasks::tasks_screen(ctx, &mut self.state),
         }
     }
 }

@@ -117,6 +117,8 @@ pub struct Task {
     pub deadline: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub assignee_name: Option<String>,
+    pub project_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

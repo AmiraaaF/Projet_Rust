@@ -6,3 +6,4 @@ pub mod screenNotifications;
 pub mod screenProfile;
 pub mod screenTodo;
 pub mod screenCalendar;
+pub mod screenTasks;
