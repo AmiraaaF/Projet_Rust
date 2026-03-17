@@ -112,7 +112,11 @@ pub struct AppState {
     pub task_status_input: String,     
     pub task_assignee_input: String,    
     pub task_deadline_input: String,    
-    pub task_project_id_input: String,  
+    pub task_project_id_input: String,
+    pub previous_task_project_id: String,  
+    pub selected_project_for_task: Option<String>,  
+    pub members_of_current_project: Vec<UserPublic>, 
+    pub selected_assignee_id: Option<String>,       
     pub show_task_form: bool,          
     pub tasks_loaded: bool, 
     // Données
@@ -121,6 +125,8 @@ pub struct AppState {
     pub current_tasks: Vec<Task>,
     pub error_message: Option<String>,
     pub success_message: Option<String>,
+    pub error_message_time: Option<std::time::Instant>,
+    pub success_message_time: Option<std::time::Instant>,
     pub api_url: String,
     pub theme: DarkTheme,
     pub billing_state: BillingState,
@@ -160,6 +166,10 @@ impl AppState {
             task_assignee_input: String::new(),
             task_deadline_input: String::new(),
             task_project_id_input: String::new(),
+            previous_task_project_id: String::new(),
+            selected_project_for_task: None,
+            members_of_current_project: Vec::new(),
+            selected_assignee_id: None,
             show_task_form: false,
             tasks_loaded: false,
             // Données
@@ -168,6 +178,8 @@ impl AppState {
             current_tasks: Vec::new(),
             error_message: None,
             success_message: None,
+            error_message_time: None,
+            success_message_time: None,
             api_url: api_url.clone(),
             theme: DarkTheme::new(),
             billing_state: BillingState::default(),
@@ -181,6 +193,7 @@ impl AppState {
         self.current_screen = screen;
         self.error_message  = None;
         self.success_message = None;
+        self.tasks_loaded = false;  // Reset pour recharger les tâches
     }
 
     pub fn clear_forms(&mut self) {
@@ -202,6 +215,10 @@ impl AppState {
         self.task_assignee_input.clear();
         self.task_deadline_input.clear();
         self.task_project_id_input.clear();
+        self.previous_task_project_id.clear();
+        self.selected_project_for_task = None;
+        self.selected_assignee_id = None;
+        self.members_of_current_project.clear();
         self.show_task_form = false;
         self.tasks_loaded = false;
     }
@@ -515,6 +532,21 @@ impl AppState {
                 eprintln!("{} tâche(s) chargée(s)", self.current_tasks.len());
             }
             Err(e) => eprintln!("Impossible de charger les tâches: {}", e),
+        }
+    }
+
+    pub fn load_project_members_sync(&mut self, project_id: &str) {
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        match self.api_client.get_project_members_sync(project_id, &token) {
+            Ok(members) => {
+                self.members_of_current_project = members;
+                eprintln!("{} membre(s) chargé(s) pour le projet", self.members_of_current_project.len());
+            }
+            Err(e) => eprintln!("Impossible de charger les membres: {}", e),
         }
     }
 

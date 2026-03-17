@@ -3,9 +3,28 @@ use crate::state::{AppState, Screen};
 use shared::models::Task;
 
 pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
-    state.load_tasks_sync(None);
+    // ── Effacer les messages après 2,5 s
+    const MESSAGE_DURATION_MS: u128 = 2500;
+    let now = std::time::Instant::now();
+    
+    if let Some(error_time) = state.error_message_time {
+        if now.duration_since(error_time).as_millis() >= MESSAGE_DURATION_MS {
+            state.error_message = None;
+            state.error_message_time = None;
+        }
+    }
+    
+    if let Some(success_time) = state.success_message_time {
+        if now.duration_since(success_time).as_millis() >= MESSAGE_DURATION_MS {
+            state.success_message = None;
+            state.success_message_time = None;
+        }
+    }
+    if !state.tasks_loaded {
+        state.load_tasks_sync(None);
+    }
 
-    // ── Couleurs depuis le thème ─────────────────────────────────────────────
+    
     let bg             = state.theme.background;
     let sidebar_bg     = state.theme.sidebar;
     let fg             = state.theme.foreground;
@@ -23,13 +42,12 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
     let amber          = state.theme.chart_3;  
     let grey           = state.theme.secondary; 
 
-    // ── Calcul des stats depuis les tâches déjà chargées ────────────────────
+
     let total        = state.current_tasks.len();
     let todo_count   = state.current_tasks.iter().filter(|t| t.status == "todo").count();
     let inprog_count = state.current_tasks.iter().filter(|t| t.status == "in_progress").count();
     let done_count   = state.current_tasks.iter().filter(|t| t.status == "done").count();
 
-    // ── TOP BAR ──────────────────────────────────────────────────────────────
     egui::TopBottomPanel::top("tasks_top_panel")
         .show_separator_line(false)
         .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::symmetric(16.0, 10.0)))
@@ -80,7 +98,31 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
                 ui.vertical(|ui| {
                     ui.set_max_width(content_width);
 
-                    // ── Titre + bouton "+ New Task" sur la même ligne ─────
+              
+                    if let Some(err) = &state.error_message.clone() {
+                        Frame::none()
+                            .fill(Color32::from_rgb(30, 20, 20))
+                            .stroke(Stroke::new(1.5, Color32::from_rgb(239, 68, 68)))
+                            .inner_margin(Margin::same(12.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new(format!("❌ {}", err)).color(Color32::from_rgb(239, 68, 68)).size(13.0));
+                            });
+                        ui.add_space(12.0);
+                    }
+                    if let Some(ok) = &state.success_message.clone() {
+                        Frame::none()
+                            .fill(Color32::from_rgb(20, 30, 20))
+                            .stroke(Stroke::new(1.5, Color32::from_rgb(132, 204, 22)))
+                            .inner_margin(Margin::same(12.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new(format!("✅ {}", ok)).color(Color32::from_rgb(132, 204, 22)).size(13.0));
+                            });
+                        ui.add_space(12.0);
+                    }
+
+                   
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             ui.label(RichText::new("Tasks").color(fg).size(22.0).strong());
@@ -110,7 +152,7 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
                     ui.add_space(32.0);
 
                     if state.show_task_form {
-                        task_form(
+                        task_form_with_project(
                             ui, state,
                             card, fg, muted, border,
                             sidebar_primary, sidebar_primary_fg,
@@ -134,12 +176,6 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
                         ui.label(RichText::new("Aucune tâche pour l'instant.").color(muted).size(14.0));
                     } else {
                         for task in &tasks_clone {
-                            let project_name = projects_clone
-                                .iter()
-                                .find(|p| p.id == task.project_id)
-                                .map(|p| p.name.as_str())
-                                .unwrap_or("—");
-
                             let (clicked_done, clicked_delete) = task_card(
                                 ui, task, &current_user_id,
                                 card, border, fg, muted,
@@ -153,20 +189,44 @@ pub fn tasks_screen(ctx: &egui::Context, state: &mut AppState) {
                         }
                     }
                     if let (Some(task_id), Some(token)) = (to_mark_done, token_clone.clone()) {
-                        let _ = state.api_client.mark_task_done_sync(&task_id, &token);
-                        state.tasks_loaded = false; // recharge la liste la prochaine frame
+                        match state.api_client.mark_task_done_sync(&task_id, &token) {
+                            Ok(()) => {
+                                // Mise à jour immédiate de l'état local
+                                if let Some(task) = state.current_tasks.iter_mut().find(|t| t.id.to_string() == task_id) {
+                                    task.status = "done".to_string();
+                                }
+                                state.tasks_loaded = false; // recharge la liste la prochaine frame
+                                state.success_message = Some("Tâche marquée comme terminée".to_string());
+                                state.success_message_time = Some(std::time::Instant::now());
+                            }
+                            Err(e) => {
+                                state.error_message = Some(format!("Erreur: {}", e));
+                                state.error_message_time = Some(std::time::Instant::now());
+                                eprintln!("Erreur mark_task_done: {}", e);
+                            }
+                        }
                     }
                     if let (Some(task_id), Some(token)) = (to_delete, token_clone) {
-                        let _ = state.api_client.delete_task_sync(&task_id, &token);
-                        state.tasks_loaded = false;
+                        match state.api_client.delete_task_sync(&task_id, &token) {
+                            Ok(()) => {
+                                state.tasks_loaded = false;
+                                state.success_message = Some("Tâche supprimée".to_string());
+                                state.success_message_time = Some(std::time::Instant::now());
+                            }
+                            Err(e) => {
+                                state.error_message = Some(format!("Erreur: {}", e));
+                                state.error_message_time = Some(std::time::Instant::now());
+                                eprintln!("Erreur delete_task: {}", e);
+                            }
+                        }
                     }
                 });
             });
         });
 }
 
-//  FORMULAIRE DE CRÉATION DE TÂCHE
-fn task_form(
+
+fn task_form_with_project(
     ui: &mut egui::Ui,
     state: &mut AppState,
     card: Color32,
@@ -199,18 +259,16 @@ fn task_form(
             );
             ui.add_space(12.0);
 
-            // ── Projet obligatoire ────────────────────────────────────────
+       
             ui.label(RichText::new("Projet *").color(muted).size(12.0));
             ui.add_space(4.0);
 
-            //menu derroulant qui affiche la liste des projets qui appartienne a l'utilisateur
             let projects_clone = state.projects.clone();
             let selected_project_name = projects_clone
                 .iter()
                 .find(|p| p.id.to_string() == state.task_project_id_input)
                 .map(|p| p.name.as_str())
-                .unwrap_or("-- Sélectionner un projet --"); 
-            let old_project_id = state.task_project_id_input.clone();
+                .unwrap_or("-- Sélectionner un projet --");
 
             egui::ComboBox::from_id_source("task_project")
                 .selected_text(selected_project_name)
@@ -225,50 +283,63 @@ fn task_form(
                     }
                 });
 
+            let project_changed = state.task_project_id_input != state.previous_task_project_id 
+                && !state.task_project_id_input.is_empty();
+            
+            if project_changed {
+                let project_id = state.task_project_id_input.clone();
+                state.load_project_members_sync(&project_id);
+                state.selected_assignee_id = None;
+                state.previous_task_project_id = project_id;
+            }
+
             ui.add_space(12.0);
 
+           
+            if !state.task_project_id_input.is_empty() {
+                ui.label(RichText::new("Assigné à (optionnel)").color(muted).size(12.0));
+                ui.add_space(4.0);
 
-            // ── Assignee : membres du projet sélectionné ──────────────────
-            // Affiché seulement si un projet est sélectionné
-            // if !state.task_project_id_input.is_empty() {
-            //     ui.label(RichText::new("Assigné à").color(muted).size(12.0));
-            //     ui.add_space(4.0);
+                let members_clone = state.members_of_current_project.clone();
+                
+                if members_clone.is_empty() {
+                    ui.label(RichText::new("Aucun membre dans ce projet").color(muted).size(11.0));
+                } else {
+                    let selected_assignee_name = state.selected_assignee_id
+                        .as_ref()
+                        .and_then(|id| {
+                            members_clone
+                                .iter()
+                                .find(|m| m.id.to_string() == *id)
+                                .map(|m| m.name.as_str())
+                        })
+                        .unwrap_or("-- Non assigné --");
 
-            //     // Nom affiché dans la ComboBox : "Moi-même" si vide, sinon le nom du membre
-            //     let members_clone = state.form_project_members.clone();
-            //     let selected_assignee_name = if state.task_assignee_input.is_empty() {
-            //         "Moi-même".to_string()
-            //     } else {
-            //         members_clone
-            //             .iter()
-            //             .find(|(id, _)| id == &state.task_assignee_input)
-            //             .map(|(_, name)| name.clone())
-            //             .unwrap_or_else(|| "Moi-même".to_string())
-            //     };
+                    egui::ComboBox::from_id_source("task_assignee")
+                        .selected_text(selected_assignee_name)
+                        .width(300.0)
+                        .show_ui(ui, |ui| {
+                            // Option: pas assigné
+                            ui.selectable_value(
+                                &mut state.selected_assignee_id,
+                                None,
+                                "-- Non assigné --",
+                            );
+                            
+                            // Options: chaque membre
+                            for member in &members_clone {
+                                ui.selectable_value(
+                                    &mut state.selected_assignee_id,
+                                    Some(member.id.to_string()),
+                                    &member.name,
+                                );
+                            }
+                        });
+                }
 
-            //     egui::ComboBox::from_id_source("task_assignee")
-            //         .selected_text(&selected_assignee_name)
-            //         .width(300.0)
-            //         .show_ui(ui, |ui| {
-            //             // Option par défaut : assigné à la personne connectée
-            //             ui.selectable_value(
-            //                 &mut state.task_assignee_input,
-            //                 String::new(),
-            //                 "Moi-même",
-            //             );
-            //             // Un item par membre du projet
-            //             for (member_id, member_name) in &members_clone {
-            //                 ui.selectable_value(
-            //                     &mut state.task_assignee_input,
-            //                     member_id.clone(),
-            //                     member_name.as_str(),
-            //                 );
-            //             }
-            //         });
-            //     ui.add_space(12.0);
-            // }
+                ui.add_space(12.0);
+            }
 
-            // ── Statut + Priorité côte à côte ────────────────────────────
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(RichText::new("Statut *").color(muted).size(12.0));
@@ -276,9 +347,9 @@ fn task_form(
                     egui::ComboBox::from_id_source("task_status")
                         .selected_text(&state.task_status_input)
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut state.task_status_input, "todo".to_string(),        "todo");
+                            ui.selectable_value(&mut state.task_status_input, "todo".to_string(), "todo");
                             ui.selectable_value(&mut state.task_status_input, "in_progress".to_string(), "in_progress");
-                            ui.selectable_value(&mut state.task_status_input, "done".to_string(),        "done");
+                            ui.selectable_value(&mut state.task_status_input, "done".to_string(), "done");
                         });
                 });
                 ui.add_space(24.0);
@@ -288,15 +359,15 @@ fn task_form(
                     egui::ComboBox::from_id_source("task_priority")
                         .selected_text(&state.task_priority_input)
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut state.task_priority_input, "low".to_string(),    "low");
+                            ui.selectable_value(&mut state.task_priority_input, "low".to_string(), "low");
                             ui.selectable_value(&mut state.task_priority_input, "medium".to_string(), "medium");
-                            ui.selectable_value(&mut state.task_priority_input, "high".to_string(),   "high");
+                            ui.selectable_value(&mut state.task_priority_input, "high".to_string(), "high");
                         });
                 });
             });
             ui.add_space(12.0);
 
-            // ── Description (optionnel) ───────────────────────────────────
+       
             ui.label(RichText::new("Description (optionnel)").color(muted).size(12.0));
             ui.add_space(4.0);
             ui.add(
@@ -307,7 +378,7 @@ fn task_form(
             );
             ui.add_space(12.0);
 
-            // ── Deadline (optionnel) ──────────────────────────────────────
+        
             ui.label(RichText::new("Deadline (optionnel)").color(muted).size(12.0));
             ui.add_space(4.0);
             ui.add(
@@ -317,7 +388,7 @@ fn task_form(
             );
             ui.add_space(20.0);
 
-            // ── Boutons Créer / Annuler ───────────────────────────────────
+   
             ui.horizontal(|ui| {
                 let creer_btn = egui::Button::new(
                     RichText::new("Créer").color(sidebar_primary_fg).size(13.0)
@@ -326,26 +397,26 @@ fn task_form(
                 .min_size(egui::vec2(100.0, 32.0));
 
                 if ui.add(creer_btn).clicked() {
-                    // Validation : le projet est obligatoire
                     if state.task_project_id_input.is_empty() {
                         state.error_message = Some("Veuillez sélectionner un projet".to_string());
+                        state.error_message_time = Some(std::time::Instant::now());
+                    } else if state.task_title_input.trim().is_empty() {
+                        state.error_message = Some("Le titre est obligatoire".to_string());
+                        state.error_message_time = Some(std::time::Instant::now());
                     } else if let Some(token) = state.token.clone() {
                         let description = if state.task_description_input.is_empty() {
                             None
                         } else {
                             Some(state.task_description_input.as_str())
                         };
-                        let deadline = if state.task_deadline_input.is_empty() {
+                    
+                        let deadline_str = if state.task_deadline_input.is_empty() {
                             None
                         } else {
-                            Some(state.task_deadline_input.as_str())
+                            Some(format!("{}T00:00:00Z", state.task_deadline_input))
                         };
-                        // Si assignee vide → on passe None (le backend assignera à l'utilisateur connecté)
-                        let assignee_id = if state.task_assignee_input.is_empty() {
-                            None
-                        } else {
-                            Some(state.task_assignee_input.as_str())
-                        };
+                        let deadline = deadline_str.as_deref();
+                        let assignee_id = state.selected_assignee_id.as_deref();
 
                         match state.api_client.create_task_on_service_sync(
                             &state.task_title_input.clone(),
@@ -360,13 +431,220 @@ fn task_form(
                             Ok(_) => {
                                 state.clear_forms();
                                 state.success_message = Some("Tâche créée avec succès".to_string());
+                                state.success_message_time = Some(std::time::Instant::now());
                             }
                             Err(e) => {
                                 state.error_message = Some(format!("Erreur: {}", e));
+                                state.error_message_time = Some(std::time::Instant::now());
                             }
                         }
                     } else {
                         state.error_message = Some("Vous devez être connecté".to_string());
+                        state.error_message_time = Some(std::time::Instant::now());
+                    }
+                }
+
+                ui.add_space(8.0);
+
+                let annuler_btn = egui::Button::new(
+                    RichText::new("Annuler").color(fg).size(13.0)
+                )
+                .fill(Color32::from_rgb(68, 68, 68))
+                .min_size(egui::vec2(100.0, 32.0));
+
+                if ui.add(annuler_btn).clicked() {
+                    state.clear_forms();
+                }
+            });
+
+           
+            if let Some(err) = &state.error_message.clone() {
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("⚠ {}", err)).color(Color32::from_rgb(239, 68, 68)).size(12.0));
+            }
+            if let Some(ok) = &state.success_message.clone() {
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("✅ {}", ok)).color(Color32::from_rgb(132, 204, 22)).size(12.0));
+            }
+        });
+}
+
+
+pub fn task_form_without_project(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    project_id: String,
+    card: Color32,
+    fg: Color32,
+    muted: Color32,
+    border: Color32,
+    sidebar_primary: Color32,
+    sidebar_primary_fg: Color32,
+    _primary: Color32,
+    _primary_fg: Color32,
+) {
+    Frame::none()
+        .fill(card)
+        .stroke(Stroke::new(1.5, sidebar_primary))
+        .inner_margin(Margin::same(20.0))
+        .rounding(Rounding::same(12.0))
+        .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
+
+            ui.label(RichText::new("Nouvelle tâche").color(fg).size(16.0).strong());
+            ui.add_space(16.0);
+
+            // ── Titre ─────────────────────────────────────────────────────
+            ui.label(RichText::new("Titre *").color(muted).size(12.0));
+            ui.add_space(4.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut state.task_title_input)
+                    .hint_text("Nom de la tâche")
+                    .desired_width(f32::INFINITY),
+            );
+            ui.add_space(12.0);
+
+            // ── Assignee: membres du projet courant ──────────────────────
+            ui.label(RichText::new("Assigné à (optionnel)").color(muted).size(12.0));
+            ui.add_space(4.0);
+
+            let members_clone = state.members_of_current_project.clone();
+            
+            if members_clone.is_empty() {
+                ui.label(RichText::new("Aucun membre dans ce projet").color(muted).size(11.0));
+            } else {
+                let selected_assignee_name = state.selected_assignee_id
+                    .as_ref()
+                    .and_then(|id| {
+                        members_clone
+                            .iter()
+                            .find(|m| m.id.to_string() == *id)
+                            .map(|m| m.name.as_str())
+                    })
+                    .unwrap_or("-- Non assigné --");
+
+                egui::ComboBox::from_id_source("task_assignee_project")
+                    .selected_text(selected_assignee_name)
+                    .width(300.0)
+                    .show_ui(ui, |ui| {
+                        // Option: pas assigné
+                        ui.selectable_value(
+                            &mut state.selected_assignee_id,
+                            None,
+                            "-- Non assigné --",
+                        );
+                        
+                        // Options: chaque membre
+                        for member in &members_clone {
+                            ui.selectable_value(
+                                &mut state.selected_assignee_id,
+                                Some(member.id.to_string()),
+                                &member.name,
+                            );
+                        }
+                    });
+            }
+
+            ui.add_space(12.0);
+
+            // ── Statut + Priorité (côte à côte) ──────────────────────────
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new("Statut *").color(muted).size(12.0));
+                    ui.add_space(4.0);
+                    egui::ComboBox::from_id_source("task_status_project")
+                        .selected_text(&state.task_status_input)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.task_status_input, "todo".to_string(), "todo");
+                            ui.selectable_value(&mut state.task_status_input, "in_progress".to_string(), "in_progress");
+                            ui.selectable_value(&mut state.task_status_input, "done".to_string(), "done");
+                        });
+                });
+                ui.add_space(24.0);
+                ui.vertical(|ui| {
+                    ui.label(RichText::new("Priorité *").color(muted).size(12.0));
+                    ui.add_space(4.0);
+                    egui::ComboBox::from_id_source("task_priority_project")
+                        .selected_text(&state.task_priority_input)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.task_priority_input, "low".to_string(), "low");
+                            ui.selectable_value(&mut state.task_priority_input, "medium".to_string(), "medium");
+                            ui.selectable_value(&mut state.task_priority_input, "high".to_string(), "high");
+                        });
+                });
+            });
+            ui.add_space(12.0);
+
+
+            ui.label(RichText::new("Description (optionnel)").color(muted).size(12.0));
+            ui.add_space(4.0);
+            ui.add(
+                egui::TextEdit::multiline(&mut state.task_description_input)
+                    .hint_text("Décrivez la tâche...")
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            );
+            ui.add_space(12.0);
+
+            ui.label(RichText::new("Deadline (optionnel)").color(muted).size(12.0));
+            ui.add_space(4.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut state.task_deadline_input)
+                    .hint_text("YYYY-MM-DD")
+                    .desired_width(200.0),
+            );
+            ui.add_space(20.0);
+
+          
+            ui.horizontal(|ui| {
+                let creer_btn = egui::Button::new(
+                    RichText::new("Créer").color(sidebar_primary_fg).size(13.0)
+                )
+                .fill(sidebar_primary)
+                .min_size(egui::vec2(100.0, 32.0));
+
+                if ui.add(creer_btn).clicked() {
+                    if state.task_title_input.trim().is_empty() {
+                        state.error_message = Some("Le titre est obligatoire".to_string());
+                        state.error_message_time = Some(std::time::Instant::now());
+                    } else if let Some(token) = state.token.clone() {
+                        let description = if state.task_description_input.is_empty() {
+                            None
+                        } else {
+                            Some(state.task_description_input.as_str())
+                        };
+                        // Convertir YYYY-MM-DD en ISO 8601: YYYY-MM-DDTHH:MM:SSZ
+                        let deadline_str = if state.task_deadline_input.is_empty() {
+                            None
+                        } else {
+                            Some(format!("{}T00:00:00Z", state.task_deadline_input))
+                        };
+                        let deadline = deadline_str.as_deref();
+                        let assignee_id = state.selected_assignee_id.as_deref();
+
+                        match state.api_client.create_task_on_service_sync(
+                            &state.task_title_input.clone(),
+                            description,
+                            &state.task_status_input.clone(),
+                            &state.task_priority_input.clone(),
+                            assignee_id,
+                            deadline,
+                            Some(&project_id),
+                            &token,
+                        ) {
+                            Ok(_) => {
+                                state.clear_forms();
+                                state.success_message = Some("Tâche créée avec succès".to_string());
+                                state.success_message_time = Some(std::time::Instant::now());
+                            }
+                            Err(e) => {
+                                state.error_message = Some(format!("Erreur: {}", e));
+                                state.error_message_time = Some(std::time::Instant::now());
+                            }
+                        }
+                    } else {
+                        state.error_message = Some("Vous devez être connecté".to_string());
+                        state.error_message_time = Some(std::time::Instant::now());
                     }
                 }
 
@@ -394,7 +672,7 @@ fn task_form(
         });
 }
 
-//  HELPERS
+
 fn stat_card(
     ui: &mut egui::Ui,
     label: &str,
@@ -419,7 +697,7 @@ fn stat_card(
 }
 
 //  CARD D'UNE TÂCHE
-fn task_card(
+pub fn task_card(
     ui: &mut egui::Ui,
     task: &Task,
     current_user_id: &Option<String>,
@@ -447,8 +725,10 @@ fn task_card(
             //Checkbox + Titre + Bouton supprimer
             ui.horizontal(|ui| {
                 let mut done_state = is_done;
-                if ui.checkbox(&mut done_state, "").clicked() && !is_done {
-                    clicked_done = true;
+                if ui.checkbox(&mut done_state, "").clicked() {
+                    if !is_done {
+                        clicked_done = true;
+                    }
                 }
                 let title_rich = if is_done {
                     RichText::new(&task.title).color(muted).size(14.0).strong().strikethrough()
@@ -545,7 +825,7 @@ fn task_card(
 }
 
 // Petit badge 
-fn badge(ui: &mut egui::Ui, label: &str, color: Color32) {
+pub fn badge(ui: &mut egui::Ui, label: &str, color: Color32) {
     Frame::none()
         .fill(Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 35))
         .stroke(Stroke::new(2.0, color))

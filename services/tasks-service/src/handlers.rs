@@ -17,7 +17,54 @@ pub struct AppState {
     pub jwt_secret: String, 
 }
 
-pub async fn create_task(State(state): State<AppState>,Json(payload): Json<CreateTaskRequest>,) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+
+async fn extract_user_id_from_headers(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Result<Uuid, (StatusCode, Json<Value>)> {
+    let token = match headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        Some(t) => t.to_string(),
+        None => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token manquant"})),
+        )),
+    };
+
+    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
+    let claims = match auth_service.validate_token(&token) {
+        Ok(c) => c,
+        Err(_) => return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide ou expiré"})),
+        )),
+    };
+
+    match Uuid::parse_str(&claims.sub) {
+        Ok(id) => Ok(id),
+        Err(_) => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Token invalide"})),
+        )),
+    }
+}
+
+pub async fn create_task(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(mut payload): Json<CreateTaskRequest>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+
+    let creator_id = extract_user_id_from_headers(&state, &headers).await?;
+
+  
+    if payload.assignee_id.is_none() {
+        payload.assignee_id = Some(creator_id);
+    }
+
     match sqlx::query(
         r#"
         INSERT INTO tasks (project_id, assignee_id, title, description, status, priority, deadline)
@@ -44,37 +91,13 @@ pub async fn create_task(State(state): State<AppState>,Json(payload): Json<Creat
     }
 }
 
-pub async fn list_tasks(State(state): State<AppState>, Query(filters): Query<TaskFilters>,headers: axum::http::HeaderMap,) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-
-    //Extraire l'utilisateur connecté
-    let token = match headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-    {
-        Some(t) => t.to_string(),
-        None => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token manquant"})),
-        )),
-    };
-
-    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
-    let claims = match auth_service.validate_token(&token) {
-        Ok(c) => c,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide ou expiré"})),
-        )),
-    };
-
-    let connected_user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide"})),
-        )),
-    };
+pub async fn list_tasks(
+    State(state): State<AppState>,
+    Query(filters): Query<TaskFilters>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Extraire l'ID de l'utilisateur connecté
+    let connected_user_id = extract_user_id_from_headers(&state, &headers).await?;
 
     // Cas 1: Si project_id est fourni, retourner les tâches de ce projet spécifique
     if let Some(project_id) = filters.project_id {
@@ -214,36 +237,8 @@ pub async fn mark_task_done(
     Path(id): Path<Uuid>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-
-
-    let token = match headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-    {
-        Some(t) => t.to_string(),
-        None => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token manquant"})),
-        )),
-    };
-
-    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
-    let claims = match auth_service.validate_token(&token) {
-        Ok(c) => c,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide ou expiré"})),
-        )),
-    };
-
-    let user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(uid) => uid,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide"})),
-        )),
-    };
+    // Extraire l'ID de l'utilisateur connecté
+    let user_id = extract_user_id_from_headers(&state, &headers).await?;
 
     let task_row = match sqlx::query("SELECT assignee_id FROM tasks WHERE id = $1")
         .bind(id)
@@ -262,7 +257,45 @@ pub async fn mark_task_done(
     };
 
     let assignee_id: Option<Uuid> = task_row.get(0);
-    if assignee_id != Some(user_id) {
+    
+    let task_project_row = match sqlx::query("SELECT project_id FROM tasks WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("Task {} not found", id)})),
+        )),
+        Err(e) => return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )),
+    };
+    
+    let project_id: Uuid = task_project_row.get(0);
+    let owner_row = match sqlx::query("SELECT owner_id FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("Project {} not found", project_id)})),
+        )),
+        Err(e) => return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )),
+    };
+    
+    let owner_id: Uuid = owner_row.get(0);
+    let is_assignee = assignee_id == Some(user_id);
+    let is_owner = user_id == owner_id;
+    
+    if !is_assignee && !is_owner {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({"error": "Tu n'es pas autorisé à modifier cette tâche"})),
@@ -300,33 +333,8 @@ pub async fn delete_task(
     Path(id): Path<Uuid>,
     headers: axum::http::HeaderMap,
 ) -> Result<StatusCode, (StatusCode, Json<Value>)> {
-
-    let token = match headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-    {
-        Some(t) => t.to_string(),
-        None => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token manquant"})),
-        )),
-    };
-    let auth_service = shared::auth::AuthService::new(state.jwt_secret.clone(), 3600);
-    let claims = match auth_service.validate_token(&token) {
-        Ok(c) => c,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide ou expiré"})),
-        )),
-    };
-    let connected_user_id = match Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Token invalide"})),
-        )),
-    };
+    
+    let connected_user_id = extract_user_id_from_headers(&state, &headers).await?;
 
     let row = sqlx::query("SELECT project_id FROM tasks WHERE id = $1")
         .bind(id)

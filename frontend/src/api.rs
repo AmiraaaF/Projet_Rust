@@ -30,16 +30,11 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        let billing_url = base_url
-            .replace(":3001", ":3003")
-            .replace(":3002", ":3003");
-        let notif_url = base_url
-            .replace(":3001", ":3004")
-            .replace(":3002", ":3004")
-            .replace(":3003", ":3004");
-        let tasks_url = base_url
-            .replace(":3001", ":3004")
-            .replace(":3002", ":3004");
+       
+        let billing_url = base_url.clone();  // billing-service
+        let notif_url = base_url.clone();    // notification-service
+        let tasks_url = base_url.clone();    // tasks-service
+        
         Self { base_url, billing_url, notif_url, tasks_url }
     }
 
@@ -155,6 +150,22 @@ impl ApiClient {
         client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
             .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    pub fn get_project_members_sync(&self, project_id: &str, token: &str) -> Result<Vec<UserPublic>, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/projects/{}/members", self.base_url, project_id);
+        let resp = client.get(&url).header("Authorization", format!("Bearer {}", token)).send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<Vec<UserPublic>>()
+                .map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(format!("Erreur ({}): {}", status, text))
+        }
     }
 
     pub fn get_tasks_sync(&self, project_id: &str, page: i64, limit: i64, token: &str) -> Result<Vec<TaskResponse>, String> {

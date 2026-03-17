@@ -12,6 +12,6 @@ RUN apt-get update && apt-get install -y libpq5 && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/tasks-service /usr/local/bin/
 
-EXPOSE 3004
+EXPOSE 3005
 
 CMD ["tasks-service"]

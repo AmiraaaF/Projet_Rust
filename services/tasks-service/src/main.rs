@@ -50,11 +50,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .on_response(tower_http::trace::DefaultOnResponse::new()),
         );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3004")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3005")
         .await
-        .expect("Failed to bind port 3004");
+        .expect("Failed to bind port 3005");
 
-    println!("  Task Service  →  http://0.0.0.0:3004");
+    println!("  Task Service  →  http://0.0.0.0:3005");
     println!("  POST   /tasks");
     println!("  GET    /tasks");
     println!("  GET    /tasks/:id");
