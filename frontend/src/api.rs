@@ -5,6 +5,7 @@ pub struct ApiClient {
     base_url:    String,  // user-service  :3001
     billing_url: String,  // billing-service :3003
     notif_url:   String,  // notification-service :3004
+    task_url:    String,  // task-service :3005
 }
 
 impl ApiClient {
@@ -16,7 +17,12 @@ impl ApiClient {
             .replace(":3001", ":3004")
             .replace(":3002", ":3004")
             .replace(":3003", ":3004");
-        Self { base_url, billing_url, notif_url }
+        let task_url = base_url
+            .replace(":3001", ":3005")
+            .replace(":3002", ":3005")
+            .replace(":3003", ":3005")
+            .replace(":3004", ":3005");
+        Self { base_url, billing_url, notif_url, task_url }
     }
 
     pub fn notif_url(&self) -> &str { &self.notif_url }
@@ -67,6 +73,27 @@ impl ApiClient {
         client.get(&url).send()
             .map_err(|e| format!("Erreur réseau: {}", e))?
             .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    /// Update user name (calls PATCH /users/:id)
+    pub fn update_user_sync(&self, user_id: &str, name: &str, token: &str) -> Result<UserPublic, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/users/{}", self.base_url, user_id);
+        let body = serde_json::json!({ "name": name });
+        let resp = client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<UserPublic>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
+                .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
+        }
     }
 
     // ─── PROJECTS ──────────────────────────────────────────────────────────────
@@ -264,7 +291,6 @@ impl ApiClient {
         }
     }
 
-
     pub fn send_notif_event_sync(
         &self,
         user_id: &str,
@@ -289,5 +315,185 @@ impl ApiClient {
         } else {
             Err(format!("Erreur event ({})", status))
         }
+    }
+
+    // ─── PROFILE & USER SETTINGS ───────────────────────────────────────────────
+
+    pub fn get_user_sync(&self, user_id: &str, token: &str) -> Result<UserPublic, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/users/{}", self.base_url, user_id);
+        let resp = client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<UserPublic>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
+                .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
+        }
+    }
+
+    pub fn update_user_role_sync(&self, user_id: &str, role: &str, token: &str) -> Result<UserPublic, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/users/{}/role", self.base_url, user_id);
+        let body = serde_json::json!({ "role": role });
+        let resp = client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<UserPublic>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
+                .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
+        }
+    }
+
+    pub fn update_user_settings_sync(&self, user_id: &str, is_active: bool, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/users/{}/settings", self.base_url, user_id);
+        let body = serde_json::json!({ "is_active": is_active });
+        let resp = client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<serde_json::Value>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            Err(format!("Erreur serveur ({})", status))
+        }
+    }
+
+    // ─── PERSONAL TASKS / TODO LIST ────────────────────────────────────────────
+
+    pub fn create_personal_task_sync(
+        &self,
+        title: &str,
+        description: Option<&str>,
+        priority: Option<&str>,
+        deadline: Option<&str>,
+        token: &str,
+    ) -> Result<PersonalTask, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/tasks", self.task_url);
+        
+        let deadline_dt = deadline.and_then(|d| {
+            chrono::DateTime::parse_from_rfc3339(d).ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
+        });
+
+        let body = serde_json::json!({
+            "title": title,
+            "description": description,
+            "priority": priority.unwrap_or("medium"),
+            "deadline": deadline_dt,
+        });
+
+        let resp = client.post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status = resp.status();
+        if status.is_success() {
+            resp.json::<PersonalTask>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
+                .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status)))
+        }
+    }
+
+    pub fn list_personal_tasks_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks", self.task_url);
+        client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    pub fn get_personal_task_sync(&self, task_id: &str, token: &str) -> Result<PersonalTask, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/{}", self.task_url, task_id);
+        client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    pub fn update_personal_task_sync(
+        &self,
+        task_id: &str,
+        title: Option<&str>,
+        description: Option<&str>,
+        status: Option<&str>,
+        priority: Option<&str>,
+        deadline: Option<&str>,
+        token: &str,
+    ) -> Result<PersonalTask, String> {
+        let client = reqwest::blocking::Client::new();
+        let url  = format!("{}/tasks/{}", self.task_url, task_id);
+
+        let deadline_dt = deadline.and_then(|d| {
+            chrono::DateTime::parse_from_rfc3339(d).ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
+        });
+
+        let body = serde_json::json!({
+            "title": title,
+            "description": description,
+            "status": status,
+            "priority": priority,
+            "deadline": deadline_dt,
+        });
+
+        let resp = client.patch(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?;
+        let status_code = resp.status();
+        if status_code.is_success() {
+            resp.json::<PersonalTask>().map_err(|e| format!("Réponse invalide: {}", e))
+        } else {
+            let text = resp.text().unwrap_or_default();
+            Err(serde_json::from_str::<serde_json::Value>(&text).ok()
+                .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| format!("Erreur serveur ({})", status_code)))
+        }
+    }
+
+    pub fn delete_personal_task_sync(&self, task_id: &str, token: &str) -> Result<serde_json::Value, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/{}", self.task_url, task_id);
+        client.delete(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
+    }
+
+    pub fn get_personal_tasks_with_deadline_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
+        let client = reqwest::blocking::Client::new();
+        let url = format!("{}/tasks/with-deadline", self.task_url);
+        client.get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .map_err(|e| format!("Erreur réseau: {}", e))?
+            .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 }

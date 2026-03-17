@@ -54,6 +54,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/users/:id", get(user::get_user))
         .route("/users/:id", patch(user::update_user))
         .route("/users/:id", delete(user::delete_user))
+        .route("/users/:id/role", patch(user::update_user_role))
+        .route("/users/:id/settings", patch(user::update_user_settings))
         .with_state(state)
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(

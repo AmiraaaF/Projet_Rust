@@ -4,7 +4,11 @@ mod state;
 mod themes;
 
 use eframe::egui;
-use screens::{screenAuth, screenDashboard, screenProject, screenBilling, screenNotifications};
+use screens::{
+    screenAuth, screenDashboard, screenProject,
+    screenBilling, screenNotifications,
+    screenProfile, screenTodo, screenCalendar,
+};
 use state::{AppState, Screen};
 use themes::DarkTheme;
 
@@ -56,6 +60,9 @@ impl eframe::App for MyApp {
             Screen::ProjectDetail => screenProject::project_detail_screen(ctx, &mut self.state),
             Screen::Billing       => screenBilling::billing_screen(ctx, &mut self.state),
             Screen::Notifications => screenNotifications::notifications_screen(ctx, &mut self.state),
+            Screen::Profile       => screenProfile::profile_screen(ctx, &mut self.state),
+            Screen::Todo          => screenTodo::todo_screen(ctx, &mut self.state),
+            Screen::Calendar      => screenCalendar::calendar_screen(ctx, &mut self.state),
         }
     }
 }
