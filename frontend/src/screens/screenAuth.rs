@@ -1,6 +1,5 @@
 use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke};
 use crate::state::{AppState, Screen};
-use shared::models::*;
 
 pub fn login_screen(ctx: &egui::Context, state: &mut AppState) {
     let bg = state.theme.background;

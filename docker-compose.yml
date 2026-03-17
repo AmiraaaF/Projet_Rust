@@ -122,6 +122,24 @@ services:
     networks:
       - mini-saas-network
     restart: on-failure
+
+  task-service:
+    build:
+      context: .
+      dockerfile: services/taks-service/Dockerfile
+    container_name: mini-saas-task-service
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/mini_saas
+      JWT_SECRET: super-secret-key-must-be-32-chars-long-!!
+      JWT_EXPIRATION: "3600"
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mini-saas-network
+    restart: on-failure
     
 volumes:
   postgres_data:

@@ -20,7 +20,7 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
     state.poll_notifications_sync();
     ctx.request_repaint();
 
-    egui::TopBottomPanel::top("top_panel")
+    egui::TopBottomPanel::top("dashboard_top")
         .show_separator_line(false)
         .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::symmetric(16.0, 10.0)))
         .show(ctx, |ui| {
@@ -40,7 +40,7 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
             });
         });
 
-    egui::SidePanel::left("sidebar")
+    egui::SidePanel::left("dashboard_sidebar")
         .show_separator_line(false)
         .min_width(180.0).max_width(180.0)
         .frame(Frame::none().fill(sidebar_bg).inner_margin(Margin::same(12.0)))
@@ -50,13 +50,19 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(8.0);
             sidebar_item(ui, "📊 Dashboard", true, fg, primary);
             ui.add_space(4.0);
-            if sidebar_item(ui, "📁 Projects", false, fg, primary) { state.go_to(Screen::Projects); }
+            if sidebar_item(ui, "📁 Projects",     false, fg, primary) { state.go_to(Screen::Projects); }
             ui.add_space(4.0);
-            if sidebar_item(ui, "💳 Billing", false, fg, primary) { state.go_to(Screen::Billing); }
+            if sidebar_item(ui, "✅ To-Do",        false, fg, primary) { state.go_to(Screen::Todo); }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "📅 Calendar",     false, fg, primary) { state.go_to(Screen::Calendar); }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "💳 Billing",      false, fg, primary) { state.go_to(Screen::Billing); }
             ui.add_space(4.0);
             if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
                 state.go_to(Screen::Notifications);
             }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "👤 Profile",      false, fg, primary) { state.go_to(Screen::Profile); }
         });
 
     egui::CentralPanel::default()
@@ -68,13 +74,17 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(20.0);
 
             ui.horizontal(|ui| {
-                stat_card(ui, "📁 Projects", &state.projects.len().to_string(), card, fg, muted, border);
+                stat_card(ui, "📁 Projects",  &state.projects.len().to_string(), card, fg, muted, border);
                 ui.add_space(12.0);
-                stat_card(ui, "✅ Tasks", &state.current_tasks.len().to_string(), card, fg, muted, border);
+                stat_card(ui, "✅ Tasks",     &state.current_tasks.len().to_string(), card, fg, muted, border);
                 ui.add_space(12.0);
-                stat_card(ui, "💳 Plan", state.billing_state.current_plan.name(), card, fg, muted, border);
+                let todo_count = state.todo_state.items.iter()
+                    .filter(|i| i.status != crate::state::TodoStatus::Done).count();
+                stat_card(ui, "📝 To-Do",    &todo_count.to_string(), card, fg, muted, border);
                 ui.add_space(12.0);
-                stat_card(ui, "🔔 Unread", &state.notif_state.unread_count.to_string(), card, fg, muted, border);
+                stat_card(ui, "💳 Plan",      state.billing_state.current_plan.name(), card, fg, muted, border);
+                ui.add_space(12.0);
+                stat_card(ui, "🔔 Unread",   &state.notif_state.unread_count.to_string(), card, fg, muted, border);
             });
 
             ui.add_space(24.0);
@@ -116,6 +126,56 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                     ui.add_space(6.0);
                 }
             }
+
+            // Recent to-dos
+            ui.add_space(16.0);
+            ui.label(RichText::new("Recent To-Do Items").color(fg).size(16.0).strong());
+            ui.add_space(12.0);
+
+            let todos: Vec<_> = state.todo_state.items.iter()
+                .filter(|i| i.status != crate::state::TodoStatus::Done)
+                .take(5).collect();
+
+            if todos.is_empty() {
+                Frame::none()
+                    .fill(card).stroke(Stroke::new(1.0, border))
+                    .inner_margin(Margin::same(16.0)).rounding(Rounding::same(8.0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("No pending tasks").color(muted).size(13.0));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.add(egui::Button::new(
+                                    RichText::new("+ Add task").color(primary_fg).size(12.0)
+                                ).fill(primary)).clicked() { state.go_to(Screen::Todo); }
+                            });
+                        });
+                    });
+            } else {
+                for todo in &todos {
+                    let prio_color = match todo.priority {
+                        crate::state::TodoPriority::High   => egui::Color32::from_rgb(239, 68, 68),
+                        crate::state::TodoPriority::Medium => egui::Color32::from_rgb(245, 158, 11),
+                        crate::state::TodoPriority::Low    => egui::Color32::from_rgb(132, 204, 22),
+                    };
+                    Frame::none()
+                        .fill(card).stroke(Stroke::new(1.0, border))
+                        .inner_margin(Margin::symmetric(14.0, 8.0)).rounding(Rounding::same(8.0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                                ui.painter().circle_filled(r.center(), 4.0, prio_color);
+                                ui.add_space(8.0);
+                                ui.label(RichText::new(&todo.title).color(fg).size(13.0));
+                                if let Some(dl) = &todo.deadline {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.label(RichText::new(format!("📅 {}", dl)).color(muted).size(11.0));
+                                    });
+                                }
+                            });
+                        });
+                    ui.add_space(4.0);
+                }
+            }
         });
 }
 
@@ -124,13 +184,12 @@ fn stat_card(ui: &mut egui::Ui, label: &str, value: &str, card: egui::Color32, f
         .fill(card).stroke(Stroke::new(1.0, border))
         .inner_margin(Margin::same(16.0)).rounding(Rounding::same(8.0))
         .show(ui, |ui| {
-            ui.set_min_width(120.0);
+            ui.set_min_width(100.0);
             ui.label(RichText::new(label).color(muted).size(12.0));
             ui.add_space(4.0);
-            ui.label(RichText::new(value).color(fg).size(24.0).strong());
+            ui.label(RichText::new(value).color(fg).size(22.0).strong());
         });
 }
-
 
 pub fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: egui::Color32, primary: egui::Color32) -> bool {
     let color = if active { primary } else { fg };
@@ -138,7 +197,6 @@ pub fn sidebar_item(ui: &mut egui::Ui, label: &str, active: bool, fg: egui::Colo
         .fill(egui::Color32::TRANSPARENT)
         .min_size(egui::vec2(156.0, 32.0))).clicked()
 }
-
 
 pub fn sidebar_item_with_badge(
     ui: &mut egui::Ui, label: &str, active: bool,

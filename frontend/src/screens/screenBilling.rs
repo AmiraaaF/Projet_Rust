@@ -211,17 +211,22 @@ pub fn billing_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(8.0);
             ui.label(RichText::new("NAVIGATION").color(muted).size(11.0));
             ui.add_space(8.0);
-            if sidebar_item(ui, "📊 Dashboard", false, fg, primary) { state.go_to(Screen::Dashboard); }
+            sidebar_item(ui, "📊 Dashboard", true, fg, primary);
             ui.add_space(4.0);
-            if sidebar_item(ui, "📁 Projects",  false, fg, primary) { state.go_to(Screen::Projects); }
+            if sidebar_item(ui, "📁 Projects",     false, fg, primary) { state.go_to(Screen::Projects); }
             ui.add_space(4.0);
-            sidebar_item(ui, "💳 Billing", true, fg, primary);
+            if sidebar_item(ui, "✅ To-Do",        false, fg, primary) { state.go_to(Screen::Todo); }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "📅 Calendar",     false, fg, primary) { state.go_to(Screen::Calendar); }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "💳 Billing",      false, fg, primary) { state.go_to(Screen::Billing); }
             ui.add_space(4.0);
             if sidebar_item_with_badge(ui, "🔔 Notifications", false, fg, primary, state.notif_state.unread_count) {
                 state.go_to(Screen::Notifications);
             }
+            ui.add_space(4.0);
+            if sidebar_item(ui, "👤 Profile",      false, fg, primary) { state.go_to(Screen::Profile); }
         });
-
     // ── CENTRAL PANEL ─────────────────────────────────────────────────────────
     egui::CentralPanel::default()
         .frame(Frame::none().fill(bg).inner_margin(Margin { left: 32.0, right: 56.0, top: 0.0, bottom: 0.0 }))

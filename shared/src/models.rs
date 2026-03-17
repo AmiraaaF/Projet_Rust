@@ -137,6 +137,39 @@ pub struct UpdateTaskRequest {
     pub deadline: Option<DateTime<Utc>>,
 }
 
+// ============= PERSONAL TASK (To-Do) =============
+// Tâches personnelles de l'utilisateur (indépendantes des projets)
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PersonalTask {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub priority: String,
+    pub deadline: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePersonalTaskRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: Option<String>,
+    pub deadline: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdatePersonalTaskRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub priority: Option<String>,
+    pub deadline: Option<DateTime<Utc>>,
+}
+
 // ============= NOTIFICATION =============
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
