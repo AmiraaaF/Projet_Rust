@@ -13,7 +13,7 @@ use std::sync::Arc;
 mod handlers;
 
 use handlers::personal_task;
-use taks_service::AppState;
+use personal_task_service::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,10 +54,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tower_http::trace::TraceLayer::new_for_http()
         );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3005")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3006")
         .await?;
     
-    tracing::info!("Task service running on http://0.0.0.0:3005");
+    tracing::info!("Task service running on http://0.0.0.0:3006");
 
     axum::serve(listener, router).await?;
 
@@ -65,5 +65,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn health_check() -> Json<serde_json::Value> {
-    Json(json!({"status": "ok", "service": "task-service"}))
+    Json(json!({"status": "ok", "service": "personal-task-service"}))
 }

@@ -163,7 +163,7 @@ pub fn notifications_screen(ctx: &egui::Context, state: &mut AppState) {
             ui.add_space(8.0);
             ui.label(RichText::new("NAVIGATION").color(muted).size(11.0));
             ui.add_space(8.0);
-            sidebar_item(ui, "📊 Dashboard", true, fg, primary);
+            if sidebar_item(ui, "📊 Dashboard", false, fg, primary) { state.go_to(Screen::Dashboard); }
             ui.add_space(4.0);
             if sidebar_item(ui, "📁 Projects",     false, fg, primary) { state.go_to(Screen::Projects); }
             ui.add_space(4.0);

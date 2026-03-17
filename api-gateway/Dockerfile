@@ -20,8 +20,8 @@ RUN mkdir -p services/user-service/src && \
     echo "fn main() {}" > services/billing-service/src/main.rs && \
     mkdir -p services/notification-service/src && \
     echo "fn main() {}" > services/notification-service/src/main.rs && \
-    mkdir -p services/taks-service/src && \
-    echo "fn main() {}" > services/taks-service/src/main.rs && \
+    mkdir -p services/personal-task-service/src && \
+    echo "fn main() {}" > services/personal-task-service/src/main.rs && \
     mkdir -p frontend/src && \
     echo "fn main() {}" > frontend/src/main.rs
 
@@ -30,7 +30,7 @@ COPY services/user-service/Cargo.toml ./services/user-service/
 COPY services/project-service/Cargo.toml ./services/project-service/
 COPY services/billing-service/Cargo.toml ./services/billing-service/
 COPY services/notification-service/Cargo.toml ./services/notification-service/
-COPY services/taks-service/Cargo.toml ./services/taks-service/
+COPY services/personal-task-service/Cargo.toml ./services/personal-task-service/
 COPY frontend/Cargo.toml ./frontend/
 
 # Build the api-gateway

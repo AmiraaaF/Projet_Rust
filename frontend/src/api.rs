@@ -4,10 +4,10 @@ use chrono;
 
 #[derive(Clone)]
 pub struct ApiClient {
-    base_url:    String,  // user-service  :3001
-    billing_url: String,  // billing-service :3003
-    notif_url:   String,  // notification-service :3004
-    task_url:    String,  // task-service :3005
+    base_url:          String,  // user-service  :3001
+    billing_url:       String,  // billing-service :3003
+    notif_url:         String,  // notification-service :3004
+    personal_task_url: String,  // personal-task-service :3006
 }
 
 impl ApiClient {
@@ -19,12 +19,13 @@ impl ApiClient {
             .replace(":3001", ":3004")
             .replace(":3002", ":3004")
             .replace(":3003", ":3004");
-        let task_url = base_url
-            .replace(":3001", ":3005")
-            .replace(":3002", ":3005")
-            .replace(":3003", ":3005")
-            .replace(":3004", ":3005");
-        Self { base_url, billing_url, notif_url, task_url }
+        let personal_task_url = base_url
+            .replace(":3001", ":3006")
+            .replace(":3002", ":3006")
+            .replace(":3003", ":3006")
+            .replace(":3004", ":3006")
+            .replace(":3005", ":3006");
+        Self { base_url, billing_url, notif_url, personal_task_url }
     }
 
     pub fn notif_url(&self) -> &str { &self.notif_url }
@@ -139,7 +140,7 @@ impl ApiClient {
         // Lire le texte brut pour debug
         let text = resp.text().map_err(|e| format!("Erreur lecture: {}", e))?;
         
-        // Si c'est un tableau vide, créer une PaginatedResponse vide
+        
         if text == "[]" {
             return Ok(PaginatedResponse {
                 data: vec![],
@@ -492,7 +493,7 @@ impl ApiClient {
         token: &str,
     ) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/tasks", self.task_url);
+        let url  = format!("{}/tasks", self.personal_task_url);
         
         let deadline_dt = deadline.and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d).ok()
@@ -524,7 +525,7 @@ impl ApiClient {
 
     pub fn list_personal_tasks_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks", self.task_url);
+        let url = format!("{}/tasks", self.personal_task_url);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -534,7 +535,7 @@ impl ApiClient {
 
     pub fn get_personal_task_sync(&self, task_id: &str, token: &str) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/{}", self.task_url, task_id);
+        let url = format!("{}/tasks/{}", self.personal_task_url, task_id);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -553,7 +554,7 @@ impl ApiClient {
         token: &str,
     ) -> Result<PersonalTask, String> {
         let client = reqwest::blocking::Client::new();
-        let url  = format!("{}/tasks/{}", self.task_url, task_id);
+        let url  = format!("{}/tasks/{}", self.personal_task_url, task_id);
 
         let deadline_dt = deadline.and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d).ok()
@@ -586,7 +587,7 @@ impl ApiClient {
 
     pub fn delete_personal_task_sync(&self, task_id: &str, token: &str) -> Result<serde_json::Value, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/{}", self.task_url, task_id);
+        let url = format!("{}/tasks/{}", self.personal_task_url, task_id);
         client.delete(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
@@ -596,7 +597,7 @@ impl ApiClient {
 
     pub fn get_personal_tasks_with_deadline_sync(&self, token: &str) -> Result<Vec<PersonalTask>, String> {
         let client = reqwest::blocking::Client::new();
-        let url = format!("{}/tasks/with-deadline", self.task_url);
+        let url = format!("{}/tasks/with-deadline", self.personal_task_url);
         client.get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
