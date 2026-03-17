@@ -17,6 +17,7 @@ pub struct AppState {
     pub project_service_url: String,
     pub billing_service_url: String,
     pub notification_service_url: String,
+    pub task_service_url: String,
 }
 
 #[tokio::main]
@@ -42,6 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "http://localhost:3003".to_string());
     let notification_service_url = std::env::var("NOTIFICATION_SERVICE_URL")
         .unwrap_or_else(|_| "http://localhost:3004".to_string());
+    let task_service_url = std::env::var("TASK_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:3005".to_string());
 
     let auth = Arc::new(AuthService::new(jwt_secret, jwt_expiration));
     let state = AppState {
@@ -50,6 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         project_service_url,
         billing_service_url,
         notification_service_url,
+        task_service_url,
     };
 
     let router = Router::new()
@@ -74,10 +78,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:id/members/:user_id", delete(proxy_to_project_service))
         .route("/projects/:id/tasks", post(proxy_to_project_service))
         .route("/projects/:id/tasks", get(proxy_to_project_service))
-        // Task routes -> project-service
-        .route("/tasks/:id", get(proxy_to_project_service))
-        .route("/tasks/:id", patch(proxy_to_project_service))
-        .route("/tasks/:id", delete(proxy_to_project_service))
+        // Personal Task routes -> task-service
+        .route("/tasks/with-deadline", get(proxy_to_task_service))
+        .route("/tasks", post(proxy_to_task_service))
+        .route("/tasks", get(proxy_to_task_service))
+        .route("/tasks/:id", get(proxy_to_task_service))
+        .route("/tasks/:id", patch(proxy_to_task_service))
+        .route("/tasks/:id", delete(proxy_to_task_service))
         // Billing routes -> billing-service
         .route("/billing/subscriptions", post(proxy_to_billing_service))
         .route("/billing/subscriptions/:user_id", get(proxy_to_billing_service))
@@ -182,6 +189,14 @@ async fn proxy_to_notification_service(
     req: Request,
 ) -> Result<Response, StatusCode> {
     proxy_request(&state.notification_service_url, headers, req).await
+}
+
+async fn proxy_to_task_service(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    req: Request,
+) -> Result<Response, StatusCode> {
+    proxy_request(&state.task_service_url, headers, req).await
 }
 
 async fn proxy_request(
