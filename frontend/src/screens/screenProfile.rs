@@ -324,35 +324,7 @@ pub fn profile_screen(ctx: &egui::Context, state: &mut AppState) {
 
                     ui.add_space(24.0);
 
-                    // ── Danger Zone ────────────────────────────────────────
-                    ui.label(RichText::new("Danger Zone").color(destructive_fg).size(16.0).strong());
-                    ui.add_space(12.0);
-
-                    Frame::none()
-                        .fill(Color32::from_rgb(45, 28, 28))
-                        .stroke(Stroke::new(1.0, destructive))
-                        .inner_margin(Margin::same(20.0))
-                        .rounding(Rounding::same(12.0))
-                        .show(ui, |ui| {
-                            ui.set_max_width(width);
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new("Sign out").color(fg).size(14.0).strong());
-                                    ui.add_space(2.0);
-                                    ui.label(RichText::new("Sign out from all devices and return to login")
-                                        .color(muted).size(12.0));
-                                });
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.add(egui::Button::new(
-                                        RichText::new("🔓 Sign Out").color(destructive_fg).size(13.0)
-                                    ).fill(destructive).min_size(Vec2::new(100.0, 32.0))).clicked() {
-                                        state.logout();
-                                    }
-                                });
-                            });
-                        });
-
-                    ui.add_space(32.0);
+                    
                 });
             });
         });
@@ -416,11 +388,7 @@ fn setting_row(
             ui.add_space(1.0);
             ui.label(RichText::new(value).color(muted).size(11.0));
         });
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(egui::Button::new(
-                RichText::new("Configure").color(secondary_fg).size(11.0)
-            ).fill(secondary).min_size(Vec2::new(80.0, 26.0)));
-        });
+        
     });
 }
 

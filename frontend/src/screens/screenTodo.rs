@@ -6,8 +6,8 @@ pub fn todo_screen(ctx: &egui::Context, state: &mut AppState) {
     state.poll_notifications_sync();
     if !state.todo_loaded {
         state.load_personal_tasks_sync();
+        ctx.request_repaint();
     }
-    ctx.request_repaint();
 
     let bg             = state.theme.background;
     let sidebar_bg     = state.theme.sidebar;
@@ -408,8 +408,8 @@ fn task_row(
                 // Checkbox
                 let mut is_done = done;
                 if ui.checkbox(&mut is_done, "").changed() {
-                    let id2 = id.clone();
-                    state.toggle_todo_done_sync(&id2);
+                    let next_status = if done { TodoStatus::Todo } else { TodoStatus::Done };
+                    state.update_todo_status_sync(&id, next_status);
                     ctx.request_repaint();
                 }
                 ui.add_space(4.0);
@@ -542,9 +542,7 @@ fn task_row(
                                 TodoStatus::InProgress => TodoStatus::Done,
                                 TodoStatus::Done       => TodoStatus::Todo,
                             };
-                            if let Some(i) = state.todo_state.items.iter_mut().find(|i| i.id == id5) {
-                                i.status = new_status;
-                            }
+                            state.update_todo_status_sync(&id, new_status);
                             ctx.request_repaint();
                         }
                     }

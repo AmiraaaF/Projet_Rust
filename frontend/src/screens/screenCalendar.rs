@@ -9,8 +9,8 @@ pub fn calendar_screen(ctx: &egui::Context, state: &mut AppState) {
     state.poll_notifications_sync();
     if !state.calendar_loaded {
         state.load_calendar_tasks_sync();
+        ctx.request_repaint();
     }
-    ctx.request_repaint();
 
     let bg             = state.theme.background;
     let sidebar_bg     = state.theme.sidebar;
@@ -106,12 +106,21 @@ pub fn calendar_screen(ctx: &egui::Context, state: &mut AppState) {
                             ui.add_space(2.0);
                             ui.label(RichText::new("View your task deadlines and plan ahead")
                                 .color(muted).size(13.0));
+                            ui.label(RichText::new("💡 Only tasks with a deadline appear here").color(chart_3).size(11.0));
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let today = Local::now();
+                            
+                            if ui.add(egui::Button::new(
+                                RichText::new("🔄 Refresh").color(fg).size(12.0)
+                            ).fill(Color32::from_rgb(55, 55, 68)).min_size(Vec2::new(80.0, 28.0))).clicked() {
+                                state.calendar_loaded = false;
+                            }
+                            
                             let is_current_month = state.calendar_state.year == today.year()
                                 && state.calendar_state.month == today.month();
                             if !is_current_month {
+                                ui.add_space(8.0);
                                 if ui.add(egui::Button::new(
                                     RichText::new("Today").color(primary_fg).size(12.0)
                                 ).fill(primary).min_size(Vec2::new(60.0, 28.0))).clicked() {

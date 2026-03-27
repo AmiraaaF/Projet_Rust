@@ -55,6 +55,24 @@ impl ApiClient {
     }
 
     pub fn notif_url(&self) -> &str { &self.notif_url }
+    
+    fn parse_to_rfc3339(&self, deadline: &str) -> Result<Option<String>, String> {
+        let trimmed = deadline.trim();
+        if trimmed.is_empty() { return Ok(None); }
+        
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+            return Ok(Some(dt.with_timezone(&chrono::Utc).to_rfc3339()));
+        }
+        
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+            if let Some(dt) = date.and_hms_opt(0, 0, 0) {
+                let dt_utc = chrono::DateTime::<chrono::Utc>::from_utc(dt, chrono::Utc);
+                return Ok(Some(dt_utc.to_rfc3339()));
+            }
+        }
+        
+        Err("Format de date invalide (attendu: YYYY-MM-DD)".to_string())
+    }
 
     // ─── AUTH ──────────────────────────────────────────────────────────────────
 
@@ -104,7 +122,7 @@ impl ApiClient {
             .json().map_err(|e| format!("Réponse invalide: {}", e))
     }
 
-    /// Update user name (calls PATCH /users/:id)
+
     pub fn update_user_sync(&self, user_id: &str, name: &str, token: &str) -> Result<UserPublic, String> {
         let client = reqwest::blocking::Client::new();
         let url  = format!("{}/users/{}", self.base_url, user_id);
@@ -163,7 +181,6 @@ impl ApiClient {
             return Err(format!("Erreur serveur: {}", status));
         }
         
-        // Lire le texte brut pour debug
         let text = resp.text().map_err(|e| format!("Erreur lecture: {}", e))?;
         
         
@@ -176,7 +193,6 @@ impl ApiClient {
             });
         }
         
-        // Sinon, essayer de parser comme PaginatedResponse
         serde_json::from_str(&text)
             .map_err(|e| format!("Réponse invalide: {} (reçu: {})", e, text))
     }
@@ -548,16 +564,13 @@ impl ApiClient {
         let client = reqwest::blocking::Client::new();
         let url  = format!("{}/personal-tasks", self.personal_task_url);
         
-        let deadline_dt = deadline.and_then(|d| {
-            chrono::DateTime::parse_from_rfc3339(d).ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
-        });
+        let deadline_rfc = deadline.map(|d| self.parse_to_rfc3339(d)).transpose()?.flatten();
 
         let body = serde_json::json!({
             "title": title,
             "description": description,
             "priority": priority.unwrap_or("medium"),
-            "deadline": deadline_dt,
+            "deadline": deadline_rfc,
         });
 
         let resp = client.post(&url)
@@ -609,17 +622,14 @@ impl ApiClient {
         let client = reqwest::blocking::Client::new();
         let url  = format!("{}/personal-tasks/{}", self.personal_task_url, task_id);
 
-        let deadline_dt = deadline.and_then(|d| {
-            chrono::DateTime::parse_from_rfc3339(d).ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
-        });
+        let deadline_rfc = deadline.map(|d| self.parse_to_rfc3339(d)).transpose()?.flatten();
 
         let body = serde_json::json!({
             "title": title,
             "description": description,
             "status": status,
             "priority": priority,
-            "deadline": deadline_dt,
+            "deadline": deadline_rfc,
         });
 
         let resp = client.patch(&url)
@@ -750,13 +760,15 @@ impl ApiClient {
         let url = format!("{}/tasks", self.tasks_url);
 
         
+        let deadline_rfc = deadline.map(|d| self.parse_to_rfc3339(d)).transpose()?.flatten();
+
         let body = serde_json::json!({
             "title":       title,
             "description": description,
             "status":      status,
             "priority":    priority,
             "assignee_id": assignee_id,
-            "deadline":    deadline,
+            "deadline":    deadline_rfc,
             "project_id":  project_id,
         });
 

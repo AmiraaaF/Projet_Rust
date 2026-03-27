@@ -623,13 +623,11 @@ pub fn task_form_without_project(
                         } else {
                             Some(state.task_description_input.as_str())
                         };
-                        // Convertir YYYY-MM-DD en ISO 8601: YYYY-MM-DDTHH:MM:SSZ
-                        let deadline_str = if state.task_deadline_input.is_empty() {
+                        let deadline = if state.task_deadline_input.is_empty() {
                             None
                         } else {
-                            Some(format!("{}T00:00:00Z", state.task_deadline_input))
+                            Some(state.task_deadline_input.as_str())
                         };
-                        let deadline = deadline_str.as_deref();
                         let assignee_id = state.selected_assignee_id.as_deref();
 
                         match state.api_client.create_task_on_service_sync(

@@ -1051,6 +1051,35 @@ impl AppState {
         }
     }
 
+    pub fn update_todo_status_sync(&mut self, id: &str, new_status: TodoStatus) {
+        let token = match &self.token { Some(t) => t.clone(), None => return };
+        
+        let status_str = match new_status {
+            TodoStatus::Todo       => "todo",
+            TodoStatus::InProgress => "in_progress",
+            TodoStatus::Done       => "done",
+        };
+
+        match self.api_client.update_personal_task_sync(
+            id,
+            None,
+            None,
+            Some(status_str),
+            None,
+            None,
+            &token,
+        ) {
+            Ok(_) => {
+                if let Some(item) = self.todo_state.items.iter_mut().find(|i| i.id == id) {
+                    item.status = new_status;
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠️ Failed to update todo status: {}", e);
+            }
+        }
+    }
+
     pub fn start_edit_todo(&mut self, id: &str) {
         if let Some(item) = self.todo_state.items.iter().find(|i| i.id == id) {
             self.todo_state.form_title       = item.title.clone();
@@ -1163,8 +1192,8 @@ impl AppState {
             }
         }
 
-        self.todo_state.items = all_items;
-        self.tasks_loaded = true;
+        self.calendar_state.tasks = all_items;
+        self.calendar_loaded = true;
     }
 
     // ─── PROFILE METHODS ──────────────────────────────────────────────────────
