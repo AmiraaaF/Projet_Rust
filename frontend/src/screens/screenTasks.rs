@@ -487,7 +487,7 @@ pub fn task_form_without_project(
     card: Color32,
     fg: Color32,
     muted: Color32,
-    border: Color32,
+    _border: Color32,
     sidebar_primary: Color32,
     sidebar_primary_fg: Color32,
     _primary: Color32,
@@ -617,42 +617,39 @@ pub fn task_form_without_project(
                     if state.task_title_input.trim().is_empty() {
                         state.error_message = Some("Le titre est obligatoire".to_string());
                         state.error_message_time = Some(std::time::Instant::now());
-                    } else if let Some(token) = state.token.clone() {
-                        let description = if state.task_description_input.is_empty() {
+                    } else {
+                        // Clone all needed values before borrowing state mutably
+                        let title = state.task_title_input.clone();
+                        let description_str = if state.task_description_input.is_empty() {
                             None
                         } else {
-                            Some(state.task_description_input.as_str())
+                            Some(state.task_description_input.clone())
                         };
-                        let deadline = if state.task_deadline_input.is_empty() {
+                        let deadline_str = if state.task_deadline_input.is_empty() {
                             None
                         } else {
-                            Some(state.task_deadline_input.as_str())
+                            Some(state.task_deadline_input.clone())
                         };
-                        let assignee_id = state.selected_assignee_id.as_deref();
+                        let assignee_id_opt = state.selected_assignee_id.clone();
+                        let status = state.task_status_input.clone();
+                        let priority = state.task_priority_input.clone();
 
-                        match state.api_client.create_task_on_service_sync(
-                            &state.task_title_input.clone(),
-                            description,
-                            &state.task_status_input.clone(),
-                            &state.task_priority_input.clone(),
-                            assignee_id,
-                            deadline,
-                            Some(&project_id),
-                            &token,
+                        match state.create_task_full_sync(
+                            &project_id,
+                            &title,
+                            description_str.as_deref(),
+                            &status,
+                            &priority,
+                            assignee_id_opt.as_deref(),
+                            deadline_str.as_deref(),
                         ) {
-                            Ok(_) => {
+                            Ok(()) => {
                                 state.clear_forms();
-                                state.success_message = Some("Tâche créée avec succès".to_string());
-                                state.success_message_time = Some(std::time::Instant::now());
                             }
-                            Err(e) => {
-                                state.error_message = Some(format!("Erreur: {}", e));
-                                state.error_message_time = Some(std::time::Instant::now());
+                            Err(_) => {
+                                // Les messages d'erreur sont déjà définis dans create_task_full_sync
                             }
                         }
-                    } else {
-                        state.error_message = Some("Vous devez être connecté".to_string());
-                        state.error_message_time = Some(std::time::Instant::now());
                     }
                 }
 

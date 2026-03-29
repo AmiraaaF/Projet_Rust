@@ -1,4 +1,4 @@
-use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke, Color32};
+use eframe::egui::{self, RichText, Frame, Margin, Rounding, Stroke, Color32, ScrollArea};
 use crate::state::{AppState, Screen};
 use crate::screens::screenDashboard::{sidebar_item, sidebar_item_with_badge};
 use crate::screens::screenTasks::{task_form_without_project, task_card};
@@ -297,37 +297,201 @@ pub fn project_detail_screen(ctx: &egui::Context, state: &mut AppState) {
 
                 ui.add_space(12.0);
 
-                // --- LISTE DES TÂCHES DU PROJET ---
-                if state.current_tasks.is_empty() {
-                    ui.label(RichText::new("Aucune tâche pour l'instant.").color(muted).size(14.0));
-                } else {
-                    let tasks_clone = state.current_tasks.clone();
-                    let current_user_id = state.current_user.as_ref().map(|u| u.id.to_string());
-                    let green = state.theme.chart_2;
-                    let amber = state.theme.chart_3;
-                    let destructive = state.theme.destructive;
+                // --- KANBAN BOARD: 3 COLONNES ---
+                let tasks_clone = state.current_tasks.clone();
+                let current_user_id = state.current_user.as_ref().map(|u| u.id.to_string());
+                let green = state.theme.chart_2;
+                let amber = state.theme.chart_3;
+                let destructive = state.theme.destructive;
 
-                    for task in &tasks_clone {
-                        let (clicked_done, clicked_delete) = task_card(
-                            ui, task, &current_user_id,
-                            card, border, fg, muted,
-                            green, amber, destructive, sidebar_primary,
-                        );
+                // Séparer les tâches par statut
+                let todo_tasks: Vec<_> = tasks_clone.iter().filter(|t| t.status == "todo").collect();
+                let in_progress_tasks: Vec<_> = tasks_clone.iter().filter(|t| t.status == "in_progress").collect();
+                let done_tasks: Vec<_> = tasks_clone.iter().filter(|t| t.status == "done").collect();
 
-                        if clicked_done {
-                            if let Some(pos) = state.current_tasks.iter().position(|t| t.id == task.id) {
-                                state.current_tasks[pos].status = "done".to_string();
-                                state.current_tasks[pos].updated_at = chrono::Utc::now();
-                            }
-                        }
+                // Calculer les dimensions
+                let total_width = ui.available_width();
+                let column_width = (total_width - 32.0) / 3.0; // 32.0 pour les espaces entre colonnes
+                let available_height = (ui.available_height() - 20.0).max(200.0); // Minimum 200.0 pixels
 
-                        if clicked_delete {
-                            state.current_tasks.retain(|t| t.id != task.id);
-                        }
+                // Afficher les 3 colonnes côte à côte
+                ui.horizontal(|ui| {
+                    ui.set_max_width(ui.available_width());
 
+                    // COLONNE 1: TO DO
+                    ui.vertical(|ui| {
+                        ui.set_width(column_width);
+                        ui.set_height(available_height);
+                        
+                        // En-tête colonne
+                        Frame::none()
+                            .fill(card)
+                            .stroke(Stroke::new(1.0, border))
+                            .inner_margin(Margin::same(12.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("📝 To Do").color(fg).size(14.0).strong());
+                                ui.label(RichText::new(format!("{} tâche(s)", todo_tasks.len())).color(muted).size(11.0));
+                            });
+                        
                         ui.add_space(8.0);
-                    }
-                }
+
+                        // Tâches de la colonne To Do
+                        ScrollArea::vertical()
+                            .id_source("todo_column_scroll")
+                            .auto_shrink([false; 2])
+                            .max_height(available_height - 60.0)
+                            .show(ui, |ui| {
+                                for task in &todo_tasks {
+                                    let (clicked_done, clicked_delete) = task_card(
+                                        ui, task, &current_user_id,
+                                        card, border, fg, muted,
+                                        green, amber, destructive, sidebar_primary,
+                                    );
+
+                                    if clicked_done {
+                                        if let Some(pos) = state.current_tasks.iter().position(|t| t.id == task.id) {
+                                            state.current_tasks[pos].status = "in_progress".to_string();
+                                            state.current_tasks[pos].updated_at = chrono::Utc::now();
+                                            // Appeler l'API pour mettre à jour le statut
+                                            if let Some(token) = state.token.clone() {
+                                                let task_id = state.current_tasks[pos].id.to_string();
+                                                let _ = state.api_client.update_task_status_sync(
+                                                    &project.id.to_string(),
+                                                    &task_id,
+                                                    "in_progress",
+                                                    &token,
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    if clicked_delete {
+                                        if let Some(token) = state.token.clone() {
+                                            let task_id = task.id.to_string();
+                                            let _ = state.api_client.delete_task_sync(&task_id, &token);
+                                        }
+                                        state.current_tasks.retain(|t| t.id != task.id);
+                                    }
+
+                                    ui.add_space(8.0);
+                                }
+                            });
+                    });
+
+                    ui.add_space(16.0);
+
+                    // COLONNE 2: IN PROGRESS
+                    ui.vertical(|ui| {
+                        ui.set_width(column_width);
+                        ui.set_height(available_height);
+                        
+                        // En-tête colonne
+                        Frame::none()
+                            .fill(card)
+                            .stroke(Stroke::new(1.0, border))
+                            .inner_margin(Margin::same(12.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("⚙️ In Progress").color(fg).size(14.0).strong());
+                                ui.label(RichText::new(format!("{} tâche(s)", in_progress_tasks.len())).color(muted).size(11.0));
+                            });
+                        
+                        ui.add_space(8.0);
+
+                        // Tâches de la colonne In Progress
+                        ScrollArea::vertical()
+                            .id_source("in_progress_column_scroll")
+                            .auto_shrink([false; 2])
+                            .max_height(available_height - 60.0)
+                            .show(ui, |ui| {
+                                for task in &in_progress_tasks {
+                                    let (clicked_done, clicked_delete) = task_card(
+                                        ui, task, &current_user_id,
+                                        card, border, fg, muted,
+                                        green, amber, destructive, sidebar_primary,
+                                    );
+
+                                    if clicked_done {
+                                        if let Some(pos) = state.current_tasks.iter().position(|t| t.id == task.id) {
+                                            state.current_tasks[pos].status = "done".to_string();
+                                            state.current_tasks[pos].updated_at = chrono::Utc::now();
+                                            // Appeler l'API pour mettre à jour le statut
+                                            if let Some(token) = state.token.clone() {
+                                                let task_id = state.current_tasks[pos].id.to_string();
+                                                let _ = state.api_client.update_task_status_sync(
+                                                    &project.id.to_string(),
+                                                    &task_id,
+                                                    "done",
+                                                    &token,
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    if clicked_delete {
+                                        if let Some(token) = state.token.clone() {
+                                            let task_id = task.id.to_string();
+                                            let _ = state.api_client.delete_task_sync(&task_id, &token);
+                                        }
+                                        state.current_tasks.retain(|t| t.id != task.id);
+                                    }
+
+                                    ui.add_space(8.0);
+                                }
+                            });
+                    });
+
+                    ui.add_space(16.0);
+
+                    // COLONNE 3: DONE
+                    ui.vertical(|ui| {
+                        ui.set_width(column_width);
+                        ui.set_height(available_height);
+                        
+                        // En-tête colonne
+                        Frame::none()
+                            .fill(card)
+                            .stroke(Stroke::new(1.0, border))
+                            .inner_margin(Margin::same(12.0))
+                            .rounding(Rounding::same(8.0))
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("✅ Done").color(fg).size(14.0).strong());
+                                ui.label(RichText::new(format!("{} tâche(s)", done_tasks.len())).color(muted).size(11.0));
+                            });
+                        
+                        ui.add_space(8.0);
+
+                        // Tâches de la colonne Done
+                        ScrollArea::vertical()
+                            .id_source("done_column_scroll")
+                            .auto_shrink([false; 2])
+                            .max_height(available_height - 60.0)
+                            .show(ui, |ui| {
+                                for task in &done_tasks {
+                                    let (clicked_done, clicked_delete) = task_card(
+                                        ui, task, &current_user_id,
+                                        card, border, fg, muted,
+                                        green, amber, destructive, sidebar_primary,
+                                    );
+
+                                    if clicked_done {
+                                        // Tâche déjà done, ne pas changer
+                                    }
+
+                                    if clicked_delete {
+                                        if let Some(token) = state.token.clone() {
+                                            let task_id = task.id.to_string();
+                                            let _ = state.api_client.delete_task_sync(&task_id, &token);
+                                        }
+                                        state.current_tasks.retain(|t| t.id != task.id);
+                                    }
+
+                                    ui.add_space(8.0);
+                                }
+                            });
+                    });
+                });
             }
         });
 }

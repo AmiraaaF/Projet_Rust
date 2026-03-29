@@ -17,6 +17,11 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
         state.load_notifications_sync();
     }
 
+    // Charger les tâches personnelles (To-Do)
+    if state.current_user.is_some() && !state.todo_loaded {
+        state.load_personal_tasks_sync();
+    }
+
     state.poll_notifications_sync();
     ctx.request_repaint();
 
@@ -129,50 +134,61 @@ pub fn dashboard_screen(ctx: &egui::Context, state: &mut AppState) {
                 }
             }
 
-            // Recent to-dos
+            // Recent project tasks
             ui.add_space(16.0);
-            ui.label(RichText::new("Recent To-Do Items").color(fg).size(16.0).strong());
+            ui.label(RichText::new("Recent Project Tasks").color(fg).size(16.0).strong());
             ui.add_space(12.0);
 
-            let todos: Vec<_> = state.todo_state.items.iter()
-                .filter(|i| i.status != crate::state::TodoStatus::Done)
-                .take(5).collect();
+            // Trier les tâches par date de création (les plus récentes d'abord) et prendre les 5 premières
+            let mut recent_tasks: Vec<_> = state.current_tasks.iter().collect();
+            recent_tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let recent_tasks: Vec<_> = recent_tasks.into_iter().take(5).collect();
 
-            if todos.is_empty() {
+            if recent_tasks.is_empty() {
                 Frame::none()
                     .fill(card).stroke(Stroke::new(1.0, border))
                     .inner_margin(Margin::same(16.0)).rounding(Rounding::same(8.0))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("No pending tasks").color(muted).size(13.0));
+                            ui.label(RichText::new("No project tasks yet").color(muted).size(13.0));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.add(egui::Button::new(
-                                    RichText::new("+ Add task").color(primary_fg).size(12.0)
-                                ).fill(primary)).clicked() { state.go_to(Screen::Todo); }
+                                    RichText::new("+ Create task").color(primary_fg).size(12.0)
+                                ).fill(primary)).clicked() { state.go_to(Screen::Projects); }
                             });
                         });
                     });
             } else {
-                for todo in &todos {
-                    let prio_color = match todo.priority {
-                        crate::state::TodoPriority::High   => egui::Color32::from_rgb(239, 68, 68),
-                        crate::state::TodoPriority::Medium => egui::Color32::from_rgb(245, 158, 11),
-                        crate::state::TodoPriority::Low    => egui::Color32::from_rgb(132, 204, 22),
+                for task in &recent_tasks {
+                    let status_color = match task.status.as_str() {
+                        "done" => egui::Color32::from_rgb(132, 204, 22),        // green
+                        "in_progress" => egui::Color32::from_rgb(245, 158, 11), // amber
+                        _ => egui::Color32::from_rgb(100, 116, 139),            // slate (todo)
                     };
+                    let status_icon = match task.status.as_str() {
+                        "done" => "✅",
+                        "in_progress" => "⚙️",
+                        _ => "📝",
+                    };
+
                     Frame::none()
                         .fill(card).stroke(Stroke::new(1.0, border))
                         .inner_margin(Margin::symmetric(14.0, 8.0)).rounding(Rounding::same(8.0))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                                ui.painter().circle_filled(r.center(), 4.0, prio_color);
-                                ui.add_space(8.0);
-                                ui.label(RichText::new(&todo.title).color(fg).size(13.0));
-                                if let Some(dl) = &todo.deadline {
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(RichText::new(format!("📅 {}", dl)).color(muted).size(11.0));
-                                    });
-                                }
+                                ui.label(RichText::new(status_icon).size(14.0));
+                                ui.add_space(4.0);
+                                
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(&task.title).color(fg).size(13.0).strong());
+                                    if let Some(project_name) = &task.project_name {
+                                        ui.label(RichText::new(format!("📁 {}", project_name)).color(muted).size(11.0));
+                                    }
+                                });
+                                
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(RichText::new(&task.status).color(status_color).size(11.0).strong());
+                                });
                             });
                         });
                     ui.add_space(4.0);

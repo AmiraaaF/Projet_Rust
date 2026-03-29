@@ -1256,6 +1256,83 @@ impl AppState {
         self.profile_state.error_msg = None;
     }
 
+    // ─── TASK CREATION WITH FULL PARAMETERS ───────────────────────────────────
+    pub fn create_task_full_sync(
+        &mut self,
+        project_id: &str,
+        title: &str,
+        description: Option<&str>,
+        status: &str,
+        priority: &str,
+        assignee_id: Option<&str>,
+        deadline: Option<&str>,
+    ) -> Result<(), String> {
+        use uuid::Uuid;
+        use chrono::DateTime;
+
+        let token = match &self.token {
+            Some(t) => t.clone(),
+            None => return Err("Non connecté".to_string()),
+        };
+
+        match self.api_client.create_task_on_service_sync(
+            title,
+            description,
+            status,
+            priority,
+            assignee_id,
+            deadline,
+            Some(project_id),
+            &token,
+        ) {
+            Ok(response) => {
+                let id = Uuid::parse_str(&response.id)
+                    .map_err(|_| "Invalid task ID from response".to_string())?;
+                let proj_id = Uuid::parse_str(&response.project_id)
+                    .map_err(|_| "Invalid project ID from response".to_string())?;
+                let assignee_uuid = response.assignee_id
+                    .as_deref()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+                let deadline_dt = response.deadline
+                    .as_deref()
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|d| d.with_timezone(&chrono::Utc));
+                let created_at = DateTime::parse_from_rfc3339(&response.created_at)
+                    .map_err(|_| "Invalid created_at timestamp".to_string())?
+                    .with_timezone(&chrono::Utc);
+                let updated_at = DateTime::parse_from_rfc3339(&response.updated_at)
+                    .map_err(|_| "Invalid updated_at timestamp".to_string())?
+                    .with_timezone(&chrono::Utc);
+
+                let task = Task {
+                    id,
+                    project_id: proj_id,
+                    assignee_id: assignee_uuid,
+                    title: response.title,
+                    description: response.description,
+                    status: response.status,
+                    priority: response.priority,
+                    deadline: deadline_dt,
+                    created_at,
+                    updated_at,
+                    assignee_name: response.assignee_name,
+                    project_name: response.project_name,
+                };
+                self.current_tasks.push(task);
+                self.success_message = Some("✅ Tâche créée avec succès!".to_string());
+                self.success_message_time = Some(std::time::Instant::now());
+                eprintln!("✅ Task created successfully and added to state");
+                Ok(())
+            }
+            Err(e) => {
+                self.error_message = Some(format!("❌ Erreur: {}", e));
+                self.error_message_time = Some(std::time::Instant::now());
+                eprintln!("❌ Failed to create task: {}", e);
+                Err(e)
+            }
+        }
+    }
+
     pub fn update_user_role_sync(&mut self, new_role: &str) -> bool {
         let user_id = match &self.current_user { Some(u) => u.id.to_string(), None => return false };
         let token   = match &self.token        { Some(t) => t.clone(),        None => return false };

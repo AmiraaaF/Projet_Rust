@@ -96,6 +96,9 @@ pub fn login_screen(ctx: &egui::Context, state: &mut AppState) {
                                         // Load user's projects
                                         state.load_projects_sync();
                                         
+                                        // Load user's tasks
+                                        state.load_tasks_sync(None);
+                                        
                                         state.go_to(Screen::Dashboard);
                                     }
                                     Err(_err) => {
